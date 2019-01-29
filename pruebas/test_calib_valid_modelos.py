@@ -34,6 +34,8 @@ class Test_CalibModelo(unittest.TestCase):
             vars_interés=['Individuos Suceptibles', 'Individuos Infectados', 'Individuos Resistentes']
         )
 
+        print()
+
     def test_calibrar_validar(símismo):
         símismo.mod.calibrar(
             paráms=list(símismo.paráms),

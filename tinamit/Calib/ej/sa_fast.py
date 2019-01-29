@@ -1,5 +1,6 @@
 from tinamit.Análisis.Sens.corridas import *
 from tinamit.Calib.ej.info_analr import *
+from tinamit.Calib.ej.sens_análisis import *
 from tinamit.Calib.ej.info_paráms import mapa_paráms, líms_paráms
 from tinamit.Calib.ej.soil_class import p_soil_class
 
@@ -26,10 +27,7 @@ def _analy_by_file(i, método, líms_paráms, mapa_paráms, mstr_arch, simul_arc
 
 
 if __name__ == "__main__":
-    import os
     import numpy as np
-
-    direc = os.path.join("D:\Thesis\pythonProject\localuse\Dt\Fast\simular")
 
     '''
     Simul
@@ -54,7 +52,7 @@ if __name__ == "__main__":
     analysis
     '''
 
-    #
+
     # for result in results:
     #     re = result.get()
     #     np.save(gaurdar + f'egr-{re[0]}', re[1])
@@ -66,6 +64,8 @@ if __name__ == "__main__":
     '''
     map
     '''
+    # merge_dict('fast', behav_arch_fast, behav_const_fa, behav_const_fa + 'egr_comp\\')
+
     # simulation_data, var_egr = carg_simul_dt(os.path.abspath('D:\Thesis\pythonProject\localuse\Dt\Fast\simular\\'), 1,
     #                   var_egr='mds_Soil salinity Tinamit CropA')
     #
@@ -74,5 +74,6 @@ if __name__ == "__main__":
     #          simulation_data['1000'][var_egr].values, 0.1,
     #          "D:\Thesis\pythonProject\localuse\Dt\Fast\map\\paso_")
 
-    gen_rank_map(geog_save_fast, 'Fast', 0.01, 1, 'num_poly_rank', cluster=True, cls=6)
+    gen_rank_map(geog_simul_pct_fast, 'Fast', 0.01, 1, 'num_poly_rank') #, cluster=True, cls=6)
     # _read_dt_4_map('Fast')
+

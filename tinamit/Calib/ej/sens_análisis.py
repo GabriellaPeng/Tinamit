@@ -132,8 +132,8 @@ def _read_dt_4_map(method, si=None):
                 'morris'][
                 list(mean_data_mor.keys())[0]]['mds_Watertable depth Tinamit']
 
-        behaviors = verif_sens('morris', list(behav_data_mor.keys())[0], mapa_paráms, p_soil_class, egr=behav_data_mor,
-                               si='mu_star')['morris'][list(behav_data_mor.keys())[0]]['mds_Watertable depth Tinamit']
+        behaviors = verif_sens('morris', list(behav_correct_const_dt.keys())[0], mapa_paráms, p_soil_class, egr=behav_correct_const_dt,
+                               si='mu_star')['morris'][list(behav_correct_const_dt.keys())[0]]['mds_Watertable depth Tinamit']
 
         no_ini = no_ini_mor
 
@@ -162,9 +162,9 @@ def _read_dt_4_map(method, si=None):
             means[param] = np.asarray([0 if np.isnan(v) else v for v in means[param]])
 
         behaviors = \
-            verif_sens('fast', list(behav_data_fast.keys())[0], mapa_paráms, p_soil_class, egr_arch=behav_arch_fast,
+            verif_sens('fast', list(fa_comp.keys())[0], mapa_paráms, p_soil_class, egr_arch=behav_const_fa,
                        si=si,
-                       dim=215)['fast'][list(behav_data_fast.keys())[0]]['mds_Watertable depth Tinamit']
+                       dim=215)['fast'][list(fa_comp.keys())[0]]['mds_Watertable depth Tinamit']
 
         no_ini = no_ini_fast
         ps = [0, 1, 2, 3, 4]
@@ -229,12 +229,21 @@ def _integrate_egr(egr_arch, dim, si, mapa_paráms, tipo_egr):
                                                 bp_gof_name]
 
     egr_tmp = {}
-    egr0 = np.load(egr_arch + f'egr-{0}.npy').tolist()
+    if tipo_egr!= 'superposition':
+        egr0 = np.load(egr_arch + f'egr-{0}.npy').tolist()
+    else:
+        egr0 = np.load(egr_arch + f'fa_egr_comp-{0}.npy').tolist()
+
     _gen_egr_tmp(tipo_egr=tipo_egr, egr=egr0, si=si, dim=dim)
     egr_tmp.update(egr0)
 
     for i in range(dim):
-        _gen_egr_tmp(tipo_egr=tipo_egr, egr=np.load(egr_arch + f'egr-{i}.npy').tolist(), si='Si', egr_tmp=egr_tmp,
+        if tipo_egr != 'superposition':
+            _gen_egr_tmp(tipo_egr=tipo_egr, egr=np.load(egr_arch + f'egr-{i}.npy').tolist(), si='Si',
+                         egr_tmp=egr_tmp,
+                         dim=i)
+        else:
+            _gen_egr_tmp(tipo_egr=tipo_egr, egr=np.load(egr_arch + f'fa_egr_comp-{i}.npy').tolist(), si='Si', egr_tmp=egr_tmp,
                      dim=i)
 
     return egr_tmp
@@ -245,7 +254,7 @@ def _single_poly(samples, i, f_simul_arch, gaurdar):
     for j in range(samples):
         print(f'this is {j}-th sample')
         behav = np.load(f_simul_arch + f"f_simul_{j}.npy").tolist()
-        fited_behav[i][j] = find_best_behavior(behav, trans_shape=i)
+        fited_behav[i][j] = find_best_behavior(behav, trans_shape=i)[0]
     if gaurdar is not None:
         np.save(gaurdar + f'fit_beh_poly-{i}', fited_behav)
 
@@ -273,6 +282,27 @@ def _compute_single(i, method, dim_arch, samples, f_simul_arch):
     # aic_behav.update({i: {k: np.average(v) for k, v in aic_poly.items()}})
     return i, count_fited_behav_by_poly, {k: np.average(v) for k, v in aic_poly.items()}
 
+def merge_dict(method, merg1, merg2, save_path):
+    if method == 'morris':
+        merg1['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_inverso'] = \
+            merg2['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_inverso']
+
+        merg1['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_log'] = \
+        merg2['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_log']
+
+        np.save(save_path, merg1)
+    elif method == 'fast':
+        for i in range(215):
+            m1 = np.load(merg1 + f'egr-{i}.npy').tolist()
+            m2 = np.load(merg2 + f'fa_cont_egr-{i}.npy').tolist()
+
+            m1['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_inverso'] = \
+                m2['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_inverso']
+
+            m1['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_log'] = \
+                m2['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_log']
+
+            np.save(save_path+f'fa_egr_comp-{i}', m1)
 
 def verif_sens(método, tipo_egr, mapa_paráms, p_soil_class, si, dim=None, egr=None, egr_arch=None):
     if método == 'fast':
@@ -317,7 +347,7 @@ def analy_behav_by_dims(method, samples, dims, f_simul_arch, dim_arch=None, gaur
                 print(f'this is {j}-th sample')
                 behav = np.load(f_simul_arch + f"f_simul_{j}.npy").tolist()
                 for i in range(dims):
-                    fited_behav[i][j] = find_best_behavior(behav, trans_shape=i)
+                    fited_behav[i][j] = find_best_behavior(behav, trans_shape=i)[0]
                     print(f'processing {i} poly')
             if gaurdar is not None:
                 np.save(gaurdar + 'fited_behav', fited_behav)
@@ -432,18 +462,29 @@ def gen_row_col(behaviors, method):
         col_labels = [0, 1, 2, 3, 4, 'Mean']
 
     col_l = []
-    col_l.extend([f"{behav}_{bpp}" for behav in behaviors for bpp in behaviors[behav]['bp_params']['Kaq']])
     col_l.extend([f"{behav}_gof" for behav in behaviors])
     col_labels.extend(sorted(col_l, key=lambda word: (word[0], word)))
 
-    col = ['N1', 'N2', 'N3', 'N4', 'N5', 'N6']
-    col.extend([f'S{i}' for i in range(1, 32)])
-    col.extend([f'D{i}' for i in range(1, 19)])
+    col_l.extend([f"{behav}_{bpp}" for behav in behaviors for bpp in behaviors[behav]['bp_params']['Kaq']])
+    col_labels.extend(sorted([pt for pt in col_l if not pt.endswith('_gof')], key=lambda word: (word[0], word)))
+
+    gof = [pt for pt in col_l if pt.endswith('_gof')]
+    spp_gof = [pt for pt in col_l if pt.startswith('spp') and pt.endswith('_gof')]
+    spp = [pt for pt in col_l if pt.startswith('spp')]
+
+    col = [f'n{i}' for i in range(1, 7)]
+    col.extend([f'S{i}' for i in range(1, len(col_l) - len(spp)+1)])
+    col.extend([f'D{i}' for i in range(1, len(spp)+1)])
+
+    col_new = col[:6]
+    col_new.extend([f'a{i}' for i in range(1, len(gof)+1)])
+    col_new.extend([f'b{i}' for i in range(1, len(col_l) - len(gof) - len(spp) + len(spp_gof) +1)])
+    col_new.extend([f'c{i}' for i in range(1, len(spp) - len(spp_gof) + 1)])
 
     row = [p for p in behaviors['log']['bp_params']]
     row_labels = ['Ptq', 'Ptr', 'Kaq', 'Peq', 'Pex', 'POH, Summer', 'POH, Winter', 'CTW', 'Dummy']
 
-    return row_labels, col, col_labels, row
+    return row_labels, col, col_labels, row, col_new
 
 
 def gen_geog_map(gaurd_arch, measure='paso_tiempo', patt=None, method='Morris', param=None, fst_cut=0.1, snd_cut=8,
@@ -513,7 +554,7 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, si=None, clus
     read_dt = _read_dt_4_map(method, si=si)
     r_c = gen_row_col(read_dt['behaviors'], method)
 
-    data = np.empty([len(r_c[0]), len(r_c[1])])
+    data = np.empty([len(r_c[0]), len(r_c[4])])
 
     if rank_method == 'polygons':
         for i in range(215):
@@ -617,10 +658,10 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, si=None, clus
             data[np.where(np.isnan(data))] = 0
 
         if cluster is False:
-            map_rank(row_labels=r_c[0], col_labels=r_c[1], data=np.round(data, 2),
-                     title=f"{method} Sensitivity Ranking Map", y_label='Parameters',
+            map_rank(row_labels=r_c[0], col_labels=[i[1:] for i in r_c[4]], data=np.round(data, 2),
+                     title=None, y_label=None, dpi=1800,
                      archivo=rank_arch + f'{rank_method}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
-                     cbarlabel=f"{method} Sensitivity Rank", cmap="magma_r", bin=data.max() + 1,
+                     cbarlabel=None, cmap="magma_r", bin=data.max() + 1,
                      rank_method=rank_method)
         else:
             points = np.transpose(data[:, 1:])
@@ -629,25 +670,25 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, si=None, clus
             cls_col_km = ['N1']
             data_new_od = np.transpose(cluster['n_points'])
             data_km = np.transpose(cluster['km_cls'])
-            for j in range(len(r_c[1]) - 1):
-                cls_col_n_od.append(r_c[1][cluster['new_order'][j]+1])
-                cls_col_km.append(r_c[1][cluster['km_lst'][j]+1])
+            for j in range(len(r_c[4]) - 1):
+                cls_col_n_od.append(r_c[4][cluster['new_order'][j] + 1])
+                cls_col_km.append(r_c[4][cluster['km_lst'][j] + 1])
             data_new_od = np.concatenate((data[:, 0].reshape(9, 1), data_new_od), axis=1)
             data_km = np.concatenate((data[:, 0].reshape(9, 1), data_km), axis=1)
             for cl in range(cls):
-                print(cl+1, [r_c[2][i+1] for i in cluster['d_km'][cl]])
-                print(cl+1, [r_c[1][i+1] for i in cluster['d_km'][cl]])
+                print(cl + 1, [r_c[2][i + 1] for i in cluster['d_km'][cl]])
+                print(cl + 1, [r_c[4][i + 1] for i in cluster['d_km'][cl]])
 
-            print('new order: ', [r_c[1][i + 1] for i in cluster['new_order']])
+            print('new order: ', [r_c[4][i + 1] for i in cluster['new_order']])
             print('new order: ', [r_c[2][i + 1] for i in cluster['new_order']])
 
             map_rank(row_labels=r_c[0], col_labels=cls_col_n_od, data=np.round(data_new_od, 2),
-                     title=f"{method} Classified Clustering Map", y_label='Parameters',
+                     title=None, y_label=None, dpi=1000,
                      archivo=rank_arch + 'new_order', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
-                     cbarlabel=f"{method} Sensitivity Rank", cmap="magma_r", bin=data.max() + 1,
+                     cbarlabel=None, cmap="magma_r", bin=data.max() + 1,
                      rank_method=rank_method)
             map_rank(row_labels=r_c[0], col_labels=cls_col_km, data=np.round(data_km, 2),
-                     title=f"{method} K-Mean-{cls} Clustering Map", y_label='Parameters',
+                     title=f"{method} K-Mean-{cls} Clustering Map", y_label='Parameters', dpi=1000,
                      archivo=rank_arch + f'k-mean-{cls}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
                      cbarlabel=f"{method} Sensitivity Rank", cmap="magma_r", bin=data.max() + 1,
                      rank_method=rank_method)
@@ -698,7 +739,7 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, si=None, clus
 
         if len(np.where(np.isnan(data))[1]) != 0:
             data[np.where(np.isnan(data))] = 0
-        map_rank(row_labels=r_c[0], col_labels=r_c[1], data=np.round(data, 2),
+        map_rank(row_labels=r_c[0], col_labels=r_c[4], data=np.round(data, 2),
                  title=f"{method} Sensitivity Ranking Results", y_label='Parameters',
                  archivo=rank_arch + f'{rank_method}', fst_cut=fst_cut, snd_cut=snd_cut, maxi=np.round(data, 2).max(),
                  cbarlabel=f"{method} Sensitivity Index", cmap="magma_r")
@@ -812,8 +853,8 @@ def map_sens(geog, metodo, measure, para_name, data, fst_cut, path, snd_cut=None
                          )
 
 
-def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_label, archivo, ax=None, cbar_kw={},
-             cbarlabel="Sensitivity Index", bin=None, rank_method=None, **kwargs):
+def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_label, archivo,cbarlabel,
+             ax=None, dpi=1000, cbar_kw={}, bin=None, rank_method=None, **kwargs):
     '''
 
     Parameters
@@ -860,7 +901,10 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
                    'red': ['#ff0000', '#ff0000']}
 
     divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="1.5%", pad=0.05)
+    if cbarlabel is not None:
+        cax = divider.append_axes("right", size="1.5%", pad=0.05)
+    else:
+        cax = divider.append_axes("bottom", size="10%", pad=0.05)
 
     if bin is not None:
         if rank_method == 'num_poly_rank' or rank_method == 'num_poly_rank_n':
@@ -881,7 +925,7 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
                 ['0', '~10%', '~20%', '~30%', '~40%', '~50%', '~60%', '~70%', '~80%', '~90%', '~100%'],
                 fontsize=5)
         elif rank_method == 'num_poly_rank':
-            cbar = fig.colorbar(im, cax=cax, ticks=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+            cbar = fig.colorbar(im, cax=cax, ticks=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orientation="horizontal")
             cbar.ax.set_yticklabels(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], fontsize=6)
         elif rank_method == 'num_poly_rank_n':
             cbar = fig.colorbar(im, cax=cax, ticks=[0, 6, 5, 4, 3, 2, 1])
@@ -924,7 +968,8 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
             # cbar = ax.figure.colorbar(im, ax=cax, ticks=[0, data.max()], **cbar_kw)
             cbar.ax.set_yticklabels(['0', f'maximum val, {data.max()}'], fontsize=3)
 
-    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom", fontsize=7)  # fontsize=15)
+    if cbarlabel is not None:
+        cbar.ax.set_ylabel(cbarlabel, rotation=0, va="bottom", fontsize=7)  # fontsize=15)
     ax.tick_params(width=0.1)  # (width=1)
     cbar.ax.tick_params(width=0.1)  # (width=1) #(width=0.1)
 
@@ -936,7 +981,7 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
         ax.set_xticklabels(col_labels, fontsize=10)
         ax.set_yticklabels(row_labels, fontsize=10)
     else:
-        ax.set_xticklabels(col_labels, fontsize=3)
+        ax.set_xticklabels(col_labels, fontsize=4)
         ax.set_yticklabels(row_labels, fontsize=4)
 
     # Let the horizontal axes labeling appear on top.
@@ -1038,12 +1083,11 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
     # matplotlib.ticker.FuncFormatter(
     #     "{:.2f}".format(data).replace("0.", ".").replace("0.00", "")))
     # Loop over data dimensions and create text annotations.
-
-    ax.set_title(title, fontsize=10, y=1.5)  # fontsize=20, y=1.1)
-    ax.set_ylabel(y_label, fontsize=10)  # fontsize=20)
-
-    # plt.title(title, y=1.5)
+    if title is not None:
+        ax.set_title(title, fontsize=10, y=1.5)  # fontsize=20, y=1.1)
+    if y_label is not None:
+        ax.set_ylabel(y_label, fontsize=10)  # fontsize=20)
 
     fig.tight_layout(h_pad=1)
-    fig.savefig(archivo, dpi=1500)
+    fig.savefig(archivo, dpi=dpi)
     plt.close()
