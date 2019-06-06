@@ -8,28 +8,14 @@ guardar_original = "D:\Thesis\pythonProject\localuse\Dt\Calib\\cali_res\\origina
 guardar_reverse = "D:\Thesis\pythonProject\localuse\Dt\Calib\\cali_res\\reverse\\"
 
 guardar_dream = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\dream\\"
-guardar_dream_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\dream_rev\\"
-guardar_dream_nse = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\dream_nse\\"
-guardar_dream_nse_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\dream_nse_rev\\"
+guardar_abc = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\abc\\"
 
-plot_dream = "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\dream\\aic\\"
-plot_dream_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\dream\\aic_rev\\"
-plot_dream_nse = "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\dream\\nse\\"
-plot_dream_nse_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\dream\\nse_rev\\"
+plot_dream = "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\dream\\"
+plot_abc = "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\\abc\\"
 
-sim_dream = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\dream\\"
-sim_dream_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\\dream_rev\\"
-sim_dream_nse = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\dream_nse\\"
-sim_dream_nse_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\dream_nse_rev\\"
+sim_dream = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\new\\dream\\"
 
-sim_class = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\class\\"
-sim_class_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\\class_rev\\"
-
-sim_original = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\original\\"
-sim_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\reverse\\"
-
-sim_nse_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\simular\\nse_rev\\"
-nse_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\nse_rev\\"
+sim_abc = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\new\\fscabc\\"
 
 
 def load_calib_info(method, type_sim, t_trend=True, calib=False, rev=False, egr_spotpy=False, obj_func=None,

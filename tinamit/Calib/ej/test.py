@@ -1,80 +1,38 @@
-# from tinamit.Análisis.Sens.anlzr import anlzr_simul
-# from tinamit.Análisis.Sens.corridas import gen_vals_inic
-# from tinamit.Calib.ej.sens_análisis import *
-# from tinamit.Calib.ej.info_paráms import *
-# from tinamit.Calib.ej.info_analr import *
-# from tinamit.Análisis.Sens.muestr import gen_problema, muestrear_paráms
-# from pandas.plotting import lag_plot
-
-# def process_constant(data):
-#     data['bp_params']['constant'] = np.add(data['bp_params']['constant'], data['bp_params']['constant_1'])
-#     del data['bp_params']['constant_1']
-#     return data
-#
-#
-# for i in range(625):
-#     complete_behav = np.load(
-#         f"D:\Thesis\pythonProject\localuse\Dt\Mor\Mor_home\\f_simul\\f_simul_no_ini\\f_simul_{i}.npy").tolist()
-#     b_param = {}
-#     b_param.update({'spp_oscil_aten_inverso': process_constant(complete_behav['spp_oscil_aten_inverso'])})
-#     b_param.update({'spp_oscil_aten_log': process_constant(complete_behav['spp_oscil_aten_log'])})
-#     print(f"finished {i}-th sample")
-#     np.save(f"D:\Thesis\pythonProject\localuse\Dt\Mor\Mor_home\\f_simul\\f_simul_no_ini\\fsim_const\\f_simul_cont_{i}", b_param)
-
-# egr = anlzr_simul('morris', líms_paráms,
-#                   "D:\Thesis\pythonProject\localuse\Dt\Mor\Mor_home\sampled_data\\muestra_morris_625_corrected_bf.json",
-#                   mapa_paráms, ficticia=True, var_egr='mds_Watertable depth Tinamit', f_simul_arch={
-#         'arch': "D:\Thesis\pythonProject\localuse\Dt\Mor\Mor_home\\f_simul\\f_simul_no_ini\\fsim_const\\f_simul_cont",
-#         'num_sample': 625,
-#         'counted_behaviors': "D:\Thesis\pythonProject\localuse\Dt\Mor\Mor_home\\f_simul\\f_simul_no_ini\\fsim_const\\count_all.npy"},
-#                   dim=215, tipo_egr="superposition", simulation=None, ops_método=None)
-# np.save("D:\Thesis\pythonProject\localuse\Dt\Mor\Mor_home\\anlzr\\625\\mor_625_spp_const", egr)
-
-# import numpy as np
-# ga = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\reverse_obs\\"
-#
-# abc_calib = np.load(ga + 'calib_reverse-fscabc.npy').tolist()
-# abc_valid = np.load(ga + 'valid_reverse-fscabc.npy').tolist()
-# # dream_calib = np.load(ga + 'calib_reverse-dream.npy').tolist()
-# # dream_valid = np.load(ga + 'valid_reverse-dream.npy').tolist()
-# print("")
-# from tinamit.Análisis.Sens.anlzr import carg_simul_dt
-# from tinamit.Calib.ej.obs_patrón import read_obs_csv
-# gard_sim = "D:\Thesis\pythonProject\localuse\Dt\Calib\simular\\fscabc\\"
-# data = read_obs_csv("D:\Thesis\data\\total_obs.csv")
 import os
-import operator
-from matplotlib import pyplot
 import numpy as np
+from xarray import Dataset
+from tinamit.Análisis.Valids import _plot_poly
+from tinamit.cositas import cargar_json
+from matplotlib import pyplot
+from tinamit.Calib.ej.cor_patrón import ori_valid, ori_calib
 
-vr = 'mds_Watertable depth Tinamit'
+var = 'mds_Watertable depth Tinamit'
+m='abc'
+if m == 'abc':
+    n_sim = (0, 145)
+    sim= "D:\Thesis\pythonProject\localuse\Dt\Calib\simular\\new\\fscabc\\aic_old\\"
+    aic = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\abc\\May-11\\aic.npy").tolist()
+    aic_rev = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\abc\\May-11\\aic_rev.npy").tolist()
+else:
+    n_sim = (0, 495)
+    sim = "D:\Thesis\pythonProject\localuse\Dt\Calib\simular\\new\\old_dream\dream\\aic\\"
+    aic = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\dream\\May-07\\aic.npy").tolist()
+    aic_rev = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\dream\\May-07\\aic_rev.npy").tolist()
 
+val1, val2= np.sort(aic['prob'])[-10:-3], np.sort(aic_rev['prob'])[-10:-3]
+shp = np.zeros([20, 41, 18])
 
-# d_sample = carg_simul_dt(gard_sim, 144, var_egr='mds_Watertable depth Tinamit', dim=1, tipo_egr='paso_tiempo', método='Morris')
-# poly = [poly-1 for poly in data[1]]
-# new_d_simul={}
-# for sam, vec in d_sample[0].items():
-#     new_d_simul[sam] = vec[1:, poly]
-# for sam, vec in new_d_simul.items():
-#     for p in range(vec.shape[1]):
-#         sim_series = pd.Series(vec[:, p], index=data[0])
-#         lag_plot(sim_series)
-#     pyplot.savefig(f"D:\Thesis\pythonProject\localuse\Dt\Calib\plot\Calib\\abc\\sim_{sam}")
-# for poly in data[1]:
-#     obs_series = pd.Series(data[1][poly], index=data[0])
-#     lag_plot(obs_series)
-# pyplot.savefig("D:\Thesis\pythonProject\localuse\Dt\Calib\plot\Calib\\abc\\obs_dt")
+ind= np.argsort(aic_rev['prob'])[-10:-3]
+val = np.sort(aic_rev['prob'])[-10:-3]
+ind_poly  = np.asarray([p-1 for p in ori_calib[1]])
 
-# combined = [ ]
-# for i in range(145, 769):
-#     like = np.load(f"D:\Thesis\pythonProject\localuse\Dt\Calib\like\\nse\\original\\like\\{i}.npy").tolist()
-#     # wt = np.load(f"D:\Thesis\pythonProject\localuse\Dt\Calib\like\\aic\\reverse\\wt\\{i}.npy").tolist()
-#     combined.append([like])
+for i, v in enumerate(ind):
+    for p in ori_calib[1]:
+        pyplot.ioff()
+        pyplot.plot(ori_calib[1][p],  label=f'obs_{p}')
+        pyplot.plot(Dataset.from_dict(cargar_json(os.path.join(sim, f'{v+n_sim[0]}')))[var].values[:,p-1], label=f'sim_{v}-{p}')
+        _plot_poly(f'{p}', f'sim{v}', "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\\test\\dream\\aic_rev\\")
 
-# aic = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\class\\original21-fscabc-aic.npy").tolist()
-# aic_rev = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\like\calib\\aic_rev.npy").tolist()
-# nse_1 = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\like\calib\\nse_1.npy").tolist()
-
-
-print()
-
+    for t in range(41):
+        shp[i, t, :] = np.take(Dataset.from_dict(cargar_json(os.path.join(sim, f'{v+n_sim[0]}')))[var].values[t, :], ind_poly)
+print(shp)

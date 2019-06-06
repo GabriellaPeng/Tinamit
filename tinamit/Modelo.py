@@ -15,13 +15,13 @@ import pandas as pd
 import xarray as xr
 from dateutil.relativedelta import relativedelta as deltarelativo
 from lxml import etree as arbole
+from matplotlib import pyplot
 
 import tinamit.Geog.Geog as Geog
 from tinamit.Análisis.Calibs import CalibradorEc, CalibradorMod, _conv_xr
 from tinamit.Análisis.Datos import obt_fecha_ft, gen_SuperBD, jsonificar, numpyficar, SuperBD
 from tinamit.Análisis.Sens.muestr import muestrear_paráms
-from tinamit.Análisis.Valids import validar_resultados
-from tinamit.Análisis.sintaxis import Ecuación
+from tinamit.Análisis.Valids import validar_resultados, _plot_poly
 from tinamit.Unidades.conv import convertir
 from tinamit.config import _, obt_val_config
 from tinamit.cositas import detectar_codif, valid_nombre_arch, guardar_json, cargar_json
@@ -1776,7 +1776,7 @@ class Modelo(object):
         símismo.calibs.update(dic)
 
     def calibrar(símismo, paráms, bd, líms_paráms=None, vars_obs=None, n_iter=10, método='mle', tipo_proc=None,
-                 mapa_paráms=None, final_líms_paráms=None, obj_func='NSE', guardar=False, guar_sim=None, egr_spotpy=None):
+                 mapa_paráms=None, final_líms_paráms=None, obj_func='NSE', guardar=False, guar_sim=None, egr_spotpy=None, warmup_period=None):
         obj_func = obj_func.upper()
         if vars_obs is None:
             l_vars = None
@@ -1808,11 +1808,11 @@ class Modelo(object):
             d_calibs = calibrador.calibrar(
                 paráms=paráms, bd=bd, líms_paráms=líms_paráms, método=método, n_iter=n_iter, vars_obs=l_vars,
                 tipo_proc=tipo_proc, mapa_paráms=mapa_paráms, final_líms_paráms=final_líms_paráms, obj_func=obj_func,
-                guardar=guardar, guar_sim=guar_sim, egr_spotpy=egr_spotpy)
+                guardar=guardar, guar_sim=guar_sim, egr_spotpy=egr_spotpy, warmup_period=warmup_period)
             símismo.calibs.update(d_calibs)
 
     def validar(símismo, bd, var=None, t_final=None, corresp_vars=None, tipo_proc=None, guardar=False, obj_func=None,
-                lg=None, paralelo=False, valid_sim=False, n_sim=None, save_plot=None):
+                lg=None, paralelo=False, valid_sim=False, n_sim=None, save_plot=None, warmup_period=None):
         if obj_func is not None:
             obj_func = obj_func.upper()
         if var is None:
@@ -1826,7 +1826,8 @@ class Modelo(object):
                 bd_lg = gen_SuperBD(bd[lg])
                 vld = símismo._validar(bd=bd_lg, var=var, t_final=t_final, corresp_vars=corresp_vars, lg=lg,
                                        tipo_proc=None, t_inic=None, guardar=guardar, obj_func=obj_func,
-                                       paralelo=paralelo, valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot)
+                                       paralelo=paralelo, valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot,
+                                       warmup_period=warmup_period)
                 res[lg] = vld
             res['éxito'] = all(d['éxito'] for d in res.values())
             return res
@@ -1841,10 +1842,10 @@ class Modelo(object):
 
         return símismo._validar(bd=bd, var=var, t_final=t_final, corresp_vars=corresp_vars, tipo_proc=tipo_proc,
                                 t_inic=t_inic, guardar=guardar, obj_func=obj_func, lg=lg, paralelo=paralelo,
-                                valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot)
+                                valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot, warmup_period=warmup_period)
 
     def _validar(símismo, bd, var, t_final, corresp_vars, tipo_proc, t_inic, guardar, obj_func, lg, paralelo,
-                 valid_sim, n_sim, save_plot):
+                 valid_sim, n_sim, save_plot, warmup_period):
         if corresp_vars is None:
             corresp_vars = {}
 
@@ -1861,11 +1862,21 @@ class Modelo(object):
             obs = bd.obt_datos(l_vars, interpolar=False)[l_vars]
         elif tipo_proc is None:
             obs = bd.obt_datos(l_vars)[l_vars]
+        elif warmup_period is not None:
+            obs = xr.Dataset(
+                data_vars={var[0]: (('n', 'x0'), bd[var[0]].values[warmup_period:, ])},
+                coords={
+                    'n': bd['n'].values[warmup_period:, ],
+                    'x0': list(bd['x0'].values),
+                    'tiempo': np.asarray(range(len(bd['tiempo'].values) - warmup_period)),
+                })
         else:
             obs = bd
 
-        if t_final is None:
-            t_final = len(obs['n']) - 1
+        if t_final is None and warmup_period is None:
+            t_final = len(obs['n'])
+        elif warmup_period is not None:
+            t_final = len(obs['n'])
         if lg is None:
             d_vals_prms = {p: d_p['dist'] for p, d_p in símismo.calibs.items()}  # {'A': ndaray(100), 'B'...}
         else:
@@ -1874,18 +1885,28 @@ class Modelo(object):
         n_vals = len(list(d_vals_prms.values())[0])
 
         if valid_sim is not None:
-            start_sim = 0
             if n_sim is not None:
-                m_res =  np.empty(
-                    [n_sim, *np.asarray([Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{start_sim}')))[vr].values
-                                          for vr in l_vars][0]).shape])  # 495*42*215
-                for i in range(n_sim):
-                    m_res[i, :] = np.asarray([Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i+start_sim}')))[vr].values
-                         for vr in l_vars][0])
-                ind = np.argsort(lg['prob'])[-int(len(lg['prob']) * 0.2):]
-                m_res = m_res[ind, ]
-                prob = lg['prob'][ind]
-                wt = np.asarray([(p-np.min(prob))/np.ptp(prob) for p in prob])
+                if warmup_period is None:
+                    shp = np.zeros_like(
+                        Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{n_sim[0]}')))[l_vars[0]].values)
+                else:
+                    shp = np.zeros_like(
+                        Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{n_sim[0]}')))[l_vars[0]].values)[warmup_period:]
+                m_res =  np.empty([n_sim[1]-n_sim[0], *shp.shape])  # 495*41*215
+                for i in range(n_sim[1]-n_sim[0]):
+                    if warmup_period is not None:
+                        m_res[i, :] = np.asarray(
+                            [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i+n_sim[0]}')))[vr].values
+                             for vr in l_vars][0])[warmup_period:]
+                    else:
+                        m_res[i, :] = np.asarray(
+                            [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i+n_sim[0]}')))[vr].values
+                             for vr in l_vars][0])
+                if tipo_proc != 'CI':
+                    ind = np.argsort(lg['prob'])[-int(len(lg['prob']) * 0.2):]
+                    m_res = m_res[ind, ]
+                    prob = lg['prob'][ind]
+                    wt = np.asarray([(p-np.min(prob))/np.ptp(prob) for p in prob])
 
             else:
                 m_res = np.empty(
@@ -1908,27 +1929,36 @@ class Modelo(object):
 
             m_res = np.array([[d[vr].values for d in res_simul.values()] for vr in l_vars])[0]  # 5*62*215
 
-        if m_res.shape[1] != obs['n'].values.size: #41!=42
-            mm_res = np.empty([len(m_res), obs['n'].values.size, m_res.shape[2]]) #29,41,215
-            for i in range(len(m_res)):
-                if all(m_res[i, 1, :] == 0):
-                    mm_res[i, :] = np.delete(m_res[i, :], 1, 0)
-                else:
-                    mm_res[i, :] = m_res[i, 1:]
-            if m_res.shape[2] != obs['x0'].values.size:  # 215 !=19
-                n_res = np.empty([len(m_res), obs['n'].values.size, obs['x0'].values.size])  #20*41*19 or N*41*19
-                for ind, v in enumerate([int(i) for i in obs['x0'].values]): #215
-                    n_res[:, :, ind] = mm_res[:, :, v - 1]
+        for j, poly in enumerate(obs['x0'].values):
+            pyplot.ioff()
+            pyplot.plot(obs[var[0]].values[:, j], label=f'obs_{poly}', linewidth=6)
+            for i in range(n_sim[0], n_sim[1]):
+                pyplot.plot(m_res[i, :, poly - 1], label=f'{i+1}')
+            _plot_poly(j, f'{save_plot[-4:-1]}-poly{poly}', save_plot)
 
-            nn_res = np.zeros([1, *n_res.shape[1:]])
-            for p in range(obs['x0'].values.size):
-                for t in range(len(obs['n'])):
-                    nn_res[:, t, p] = np.average(n_res[:, t, p], weights=wt)
+            aray_mean = np.asarray(np.nanmean(m_res[i, :, poly - 1]) for i in range(n_sim[0], n_sim[1]))
+            pyplot.plot(obs[var[0]].values[:, j], label=f'obs_{poly}', linewidth=6)
+            pyplot.plot(m_res[np.argmax(aray_mean), :, poly - 1], label=f'max_{np.argmax(aray_mean)}')
+            pyplot.plot(m_res[np.argmin(aray_mean), :, poly - 1], label=f'min_{np.argmin(aray_mean)}')
+            _plot_poly(poly, f'{save_plot[-4:-1]}_a/i', save_plot)
 
+        if m_res.shape[1] != len(obs['n']): #41!=42
+            raise ValueError("El valor analógico no coincide con el eje de tiempo de la observación.")
+
+        if m_res.shape[2] != len(obs['x0']):  # 215 !=19
+            n_res = np.empty([len(m_res), *obs[l_vars[0]].values.shape])  #20*41*19 or N*41*19
+            for ind, v in enumerate([int(i) for i in obs['x0'].values]): #215
+                n_res[:, :, ind] = m_res[:, :, v - 1]
+            if tipo_proc != 'CI':
+                nn_res = np.zeros([1, *n_res.shape[1:]])
+                for p in range(obs['x0'].values.size):
+                    for t in range(len(obs['n'])):
+                        nn_res[:, t, p] = np.average(n_res[:, t, p], weights=wt)
+            else:
+                nn_res=n_res
             matrs_simul = {vr: nn_res for vr in l_vars}
         else:
-            matrs_simul = {vr: np.array([d[vr].values for d in res_simul.values()]) for vr in
-                           l_vars}  # {param: 100*21*6}// 5*62*215
+            matrs_simul = {vr: np.array([d[vr].values for d in res_simul.values()]) for vr in l_vars}
 
         if tipo_proc is None:
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)
@@ -1936,8 +1966,8 @@ class Modelo(object):
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc,
                                             obj_func=obj_func, save_plot=save_plot, gard=guardar)
 
-        if guardar:
-            np.save(guardar+f"_{obj_func}", resultados)
+        if guardar and tipo_proc is not None:
+            np.save(guardar+f"_{tipo_proc.lower()}", resultados)
 
         return resultados
 

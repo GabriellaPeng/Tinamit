@@ -1,4 +1,3 @@
-import os
 import tempfile
 from warnings import warn as avisar
 
@@ -540,17 +539,15 @@ class CalibradorMod(object):
         símismo.mod = mod
 
     def calibrar(símismo, paráms, líms_paráms, bd, método, vars_obs, n_iter, guardar, corresp_vars=None, tipo_proc=None,
-                 mapa_paráms=None, final_líms_paráms=None, obj_func='AIC', guar_sim=False, egr_spotpy=False):
+                 mapa_paráms=None, final_líms_paráms=None, obj_func='AIC', guar_sim=False, egr_spotpy=False, warmup_period=None):
 
         método = método.lower()
         mod = símismo.mod
         if isinstance(bd, xr.Dataset):
             obs = gen_SuperBD(bd)
-            t_inic = None
         else:
-            obs = _conv_xr(bd, vars_obs)
+            obs = _conv_xr(bd, vars_obs, warmup_period)
             t_final = len(obs['n'])
-            t_inic = obs['n'].values[0]
 
         if corresp_vars is None:
             corresp_vars = {}
@@ -576,20 +573,21 @@ class CalibradorMod(object):
                     mod_spotpy = ModSpotPy(mod=mod, líms_paráms=líms_paráms, obs=obs)
                 else:
                     mod_spotpy = PatrónProc(mod=mod, líms_paráms=líms_paráms, obs=obs, tipo_proc=tipo_proc,
-                                            mapa_paráms=mapa_paráms, comp_final_líms=final_líms_paráms,
-                                            obj_func=obj_func, t_final=t_final, t_inic=t_inic, guar_sim=guar_sim
-                                            )
-                if método in ['dream', 'mcmc', 'sceua']:
-                    muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False,
-                                                       alt_objfun=None)
-                else:
-                    muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False)
+                                            mapa_paráms=mapa_paráms, comp_final_líms=final_líms_paráms, obj_func=obj_func,
+                                            t_final=t_final, guar_sim=guar_sim, warmup_period=warmup_period)
+                # if método in ['dream', 'mcmc', 'sceua']:
+                #     muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False,
+                #                                        alt_objfun=None)
+                # else:
+                muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False)
 
                 if final_líms_paráms is not None and método in ['dream', 'demcz', 'sceua']:
                     if método == 'dream':
                         muestreador.sample(repetitions=n_iter, runs_after_convergence=n_iter,
                                            # repetitions= 2000+n_iter
                                            nChains=len(final_líms_paráms))
+                    elif método == 'fscabc' and tipo_proc=='patrón':
+                        muestreador.sample(n_iter, peps=-30)
                     elif método == 'sceua':
                         muestreador.sample(n_iter, ngs=len(final_líms_paráms) * 3)
                     elif método == 'demcz':
@@ -762,14 +760,22 @@ def _calc_máx_trz(trz):
         return np.nan
 
 
-def _conv_xr(datos, vars_obs):  # datos[0] time; datos[1] dict{obspoly: ndarray}
+def _conv_xr(datos, vars_obs, warmup_period=None):  # datos[0] time; datos[1] dict{obspoly: ndarray}
     if isinstance(datos, tuple):
-        matriz_vacía = np.empty([len(list(datos[1].values())[0]), len(datos[1])])  # 60, 38
+        if warmup_period is None:
+            matriz_vacía = np.empty([len(list(datos[1].values())[0]), len(datos[1])])
+        else:
+            datos = list(datos)
+            matriz_vacía = np.empty([len(list(datos[1].values())[0])-warmup_period, len(datos[1])])  # 60, 38
+            datos[0] = datos[0].values[warmup_period:]
     else:
         raise TypeError(_("Por favor agregue o seleccione el tipo correcto de los datos observados."))
 
     for poly, data in datos[1].items():
-        matriz_vacía[:, list(datos[1]).index(poly)] = np.asarray(datos[1][poly])
+        if warmup_period is None:
+            matriz_vacía[:, list(datos[1]).index(poly)] = np.asarray(datos[1][poly])
+        else:
+            matriz_vacía[:, list(datos[1]).index(poly)] = np.asarray(datos[1][poly][warmup_period:])
 
     return xr.Dataset(
         data_vars={vars_obs[0]: (('n', 'x0'), matriz_vacía)},
@@ -956,12 +962,9 @@ class PatrónProc(object):
     itr = 0
 
     def __init__(símismo, mod, líms_paráms, obs, tipo_proc, mapa_paráms, comp_final_líms, obj_func, t_final,
-                 t_inic, guar_sim):
-        símismo.paráms = [
-            spotpy.parameter.Uniform(str(list(comp_final_líms).index(p)), low=d[0], high=d[1],
-                                     optguess=(d[0] + d[1]) / 2)
-            for p, d in comp_final_líms.items()
-        ]
+                 guar_sim, warmup_period):
+        símismo.paráms = [spotpy.parameter.Uniform(str(list(comp_final_líms).index(p)), low=d[0], high=d[1],
+                        optguess=(d[0] + d[1]) / 2) for p, d in comp_final_líms.items()]
         símismo.mapa_paráms = mapa_paráms
         símismo.líms_paráms = líms_paráms
         símismo.final_líms_paráms = comp_final_líms
@@ -969,14 +972,12 @@ class PatrónProc(object):
         símismo.mod = mod
         símismo.guar_sim = guar_sim
         símismo.vars_interés = sorted(list(obs.data_vars))
-        símismo.t_inic = t_inic
         símismo.t_final = t_final
         símismo.tipo_proc = tipo_proc
         símismo.obs = obs
+        símismo.warmup_period = warmup_period
         símismo.mu_obs, símismo.sg_obs, símismo.obs_norm = aplastar(obs, símismo.vars_interés)
-
-        símismo.eval, símismo.len_bparam = patro_proces(símismo.tipo_proc, símismo.obs, símismo.obs_norm,
-                                                        símismo.vars_interés)  # multidim: 6*21//21*38//1*1*38
+        símismo.eval, símismo.len_bparam = patro_proces(símismo.tipo_proc, símismo.obs, símismo.obs_norm)
 
     def parameters(símismo):
         return spotpy.parameter.generate(símismo.paráms)
@@ -985,27 +986,19 @@ class PatrónProc(object):
         vals_inic = {PatrónProc.itr:
                          gen_val_inic(x, símismo.mapa_paráms, símismo.líms_paráms, símismo.final_líms_paráms)}
 
-        res = símismo.mod.simular_grupo(vars_interés=símismo.vars_interés[0], t_final=41,  # símismo.t_final,
+        res = símismo.mod.simular_grupo(vars_interés=símismo.vars_interés[0], t_final=40,
                                         vals_inic=vals_inic, guardar=símismo.guar_sim)
 
         PatrónProc.itr += 1
 
         if isinstance(res, dict):
-            m_res = np.array([list(res.values())[0][v] for v in símismo.vars_interés][0])  # 42*215
+            m_res = np.array([list(res.values())[0][v] for v in símismo.vars_interés][0])[símismo.warmup_period:]  # 41*215
         else:
-            m_res = np.array([res[v].values for v in símismo.vars_interés][0])  # 62*215
+            m_res = np.array([res[v].values for v in símismo.vars_interés][0])[símismo.warmup_period:]  # 62*215
         if m_res.shape[1] != símismo.obs['x0'].values.size:
-            mm_res = np.empty([símismo.obs['n'].values.size, m_res.shape[1]])
-            if m_res.shape[0] != símismo.obs['n'].values.size:
-                if all(m_res[1, :] == 0):
-                    mm_res = np.delete(m_res, 1, 0)
-                else:
-                    mm_res = m_res[1:, :]
-                n_res = np.empty([len(mm_res), símismo.obs['x0'].values.size])
-                for ind, v in enumerate([int(i) for i in símismo.obs['x0'].values]):
-                    n_res[:, ind] = mm_res[:, v - 1]
-            else:
-                raise ValueError(" ")
+            n_res = np.empty([len(m_res), len(símismo.obs['x0'].values)])  # 39*19
+            for ind, v in enumerate(símismo.obs['x0'].values):
+                n_res[:, ind] = m_res[:, v - 1]
         else:
             n_res = m_res  # 21*6
         return ((n_res - símismo.mu_obs) / símismo.sg_obs).T  # 62*38 -> 38*62//6*21//18*62
@@ -1016,12 +1009,11 @@ class PatrónProc(object):
     def objectivefunction(símismo, simulation, evaluation, params=None):
         # like = spotpy.likelihoods.gaussianLikelihoodMeasErrorOut(evaluation,simulation)
         # like = spotpy.objectivefunctions.nashsutcliffe(evaluation, simulation)
-        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, símismo.obj_func, símismo.len_bparam, obs=símismo.obs,
-                      valid='point-pattern', itr=PatrónProc.itr)[0]
+        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, símismo.obj_func, símismo.len_bparam, valid='point-pattern')[0]
         return gof
 
 
-def patro_proces(tipo_proc, obs, norm_obs, vars_interés=None, valid=None):
+def patro_proces(tipo_proc, obs, norm_obs, valid=None):
     if tipo_proc == 'multidim':  # {var: nparray[61, 38]}
         return norm_obs, 0  # nparray[38, 61]
     elif tipo_proc == 'patrón':
@@ -1031,7 +1023,7 @@ def patro_proces(tipo_proc, obs, norm_obs, vars_interés=None, valid=None):
             return d_patron, length_params, d_numero
         else:
             d_patron = compute_patron(obs, norm_obs, valid=valid)[1]
-            matriz_vacía = np.empty([obs[vars_interés[0]].values.shape[0], len(d_patron)])  # 41, 19
+            matriz_vacía = np.empty([norm_obs.shape[1], len(d_patron)])  # 41, 19
             length_params = [len(list(d_data.values())[0]['bp_params']) for poly, d_data in d_patron.items()]
             for poly, d_data in d_patron.items():
                 matriz_vacía[:, list(d_patron).index(poly)] = np.asarray(d_patron[poly]['y_pred'])
@@ -1050,10 +1042,7 @@ def aplastar(datos, vars_interés):
 
 
 def gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms):
-    # if isinstance(x, np.ndarray):
     vals_inic = {p: np.array(x[list(final_líms_paráms).index(p)]) for p in líms_paráms if p in final_líms_paráms}
-    # else:
-    # raise TypeError(f"simulation results {x} must be the type of np.ndarray")
 
     for p, mapa in mapa_paráms.items():
         if isinstance(mapa, list):
@@ -1078,11 +1067,7 @@ def gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms):
     return vals_inic
 
 
-path = "D:\Thesis\pythonProject\localuse\Dt\Calib\like\calib\\dream"
-save_path = f"{path}\\dream\\"
-
-def gen_gof(tipo_proc, sim=None, eval=None, obj_func=None, len_bparam=None, valid=None, obs=None, itr=None):
-    # global save_path
+def gen_gof(tipo_proc, sim=None, eval=None, obj_func=None, len_bparam=None, valid=None):
     def _classify(aic_array):
         maxi = np.nanmax(aic_array)
         mini = np.nanmin(aic_array)
@@ -1095,30 +1080,17 @@ def gen_gof(tipo_proc, sim=None, eval=None, obj_func=None, len_bparam=None, vali
 
     if tipo_proc == 'patrón':
         if valid == 'pattern-pattern':
-            len_obs_poly = np.empty([len(eval)])
-            for i, y_sim in enumerate(sim):
-                if obj_func == 'AIC':
-                    t_sim = patro_proces(tipo_proc, obs, sim, valid="valid_multi_tests")[0]
-                    len_obs_poly[i] = -aic(len_bparam[i], eval[i], t_sim[list(t_sim)[i]]['y_pred'])
-            like, wt = _classify(len_obs_poly)
-            return like
+            wt_poly = np.empty([len(eval)])
+            for i in range(len(eval)):
+                wt_poly[i] = -aic(len_bparam[i], eval[i], sim[i])
+            like, wt = _classify(wt_poly)
+            return like, wt_poly
         elif valid == 'point-pattern':
             len_valid_sim = np.empty([len(len_bparam)])  # 20*poly6
             for i, y_sim in enumerate(sim):  # i=[1, 20], pa=[6*21]  # j=1, 6; poly [21]
                 if obj_func == 'AIC':
                     len_valid_sim[i] = -aic(len_bparam[i], eval[i], y_sim)
             like, wt = _classify(len_valid_sim)
-            # if itr == 0 :
-            #     if not os.path.isfile(f"{path}\\dream\\0.npy"):
-            #         save_path = f"{path}\\dream\\"
-            #     elif not os.path.isfile(f"{path}\\dream_rev\\0.npy"):
-            #         save_path = f"{path}\\dream_rev\\"
-            #     elif not os.path.isfile(f"{path}\\dream_nse\\0.npy"):
-            #         save_path = f"{path}\\dream_nse\\"
-            #     elif not os.path.isfile(f"{path}\\dream_nse_rev\\0.npy"):
-            #         save_path = f"{path}\\dream_nse_rev\\"
-            #
-            # np.save(save_path + f"{itr}", (like, wt))
             return like, len_valid_sim
 
     elif tipo_proc == 'multidim':

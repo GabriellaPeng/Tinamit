@@ -1,7 +1,6 @@
 import os
 import matplotlib
 import matplotlib.pyplot as plt
-
 from collections import Counter
 from sklearn.cluster import KMeans
 import scipy.cluster.hierarchy as sch
