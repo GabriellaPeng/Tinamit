@@ -583,11 +583,13 @@ class CalibradorMod(object):
 
                 if final_líms_paráms is not None and método in ['dream', 'demcz', 'sceua']:
                     if método == 'dream':
-                        muestreador.sample(repetitions=n_iter, runs_after_convergence=n_iter,
+                        muestreador.sample(repetitions=n_iter, runs_after_convergence=n_iter)
                                            # repetitions= 2000+n_iter
-                                           nChains=len(final_líms_paráms))
-                    elif método == 'fscabc' and tipo_proc=='patrón':
-                        muestreador.sample(n_iter, peps=-30)
+                    elif método == 'fscabc':
+                        if tipo_proc=='patrón':
+                            muestreador.sample(n_iter, peps=-30)
+                        else:
+                            muestreador.sample(n_iter, peps=-1)
                     elif método == 'sceua':
                         muestreador.sample(n_iter, ngs=len(final_líms_paráms) * 3)
                     elif método == 'demcz':

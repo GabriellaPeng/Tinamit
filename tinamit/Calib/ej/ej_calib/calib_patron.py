@@ -39,8 +39,8 @@ if __name__ == "__main__":
     for m in method:
         # if m == 'fscabc':
         if m == 'dream':
-            _calib(tipo_proc='patrón', obj_func='AIC', guardar=guardar_dream+'aic', método=m,
-                   guar_sim=sim_dream)
+            # _calib(tipo_proc='patrón', obj_func='AIC', guardar=guardar_dream+'aic', método=m,
+            #        guar_sim=sim_dream)
         #
         #     _calib(reverse=True, tipo_proc='patrón', obj_func='AIC', guardar=guardar_abc+'aic_rev', método=m,
         #            guar_sim=sim_abc_rev)
@@ -55,6 +55,9 @@ if __name__ == "__main__":
             # aic
             # _valid(tipo_proc='CI', guardar=guardar_abc + 'valid_aic', valid_sim=sim_abc+'aic\\',
             #        n_sim=(0, 144), save_plot=plot_abc+'aic\\', lg=np.load(guardar_abc + "aic.npy").tolist()) #run 4 times
+
+            _valid(tipo_proc='patrón', guardar=guardar_abc + 'valid_aic', valid_sim=sim_abc + 'aic\\',
+                   n_sim=(0, 144), save_plot=None, lg=np.load(guardar_abc + "May-11\\aic.npy").tolist())
 
             # _valid(tipo_proc='patrón', guardar=guardar_abc + 'valid_aic', valid_sim=sim_abc,
             #        n_sim=(0, 144), save_plot=plot_abc+'aic\\', lg=np.load(guardar_abc + "aic.npy").tolist())

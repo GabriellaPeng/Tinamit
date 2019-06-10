@@ -1929,18 +1929,19 @@ class Modelo(object):
 
             m_res = np.array([[d[vr].values for d in res_simul.values()] for vr in l_vars])[0]  # 5*62*215
 
-        for j, poly in enumerate(obs['x0'].values):
-            pyplot.ioff()
-            pyplot.plot(obs[var[0]].values[:, j], label=f'obs_{poly}', linewidth=6)
-            for i in range(n_sim[0], n_sim[1]):
-                pyplot.plot(m_res[i, :, poly - 1], label=f'{i+1}')
-            _plot_poly(j, f'{save_plot[-4:-1]}-poly{poly}', save_plot)
-
-            aray_mean = np.asarray(np.nanmean(m_res[i, :, poly - 1]) for i in range(n_sim[0], n_sim[1]))
-            pyplot.plot(obs[var[0]].values[:, j], label=f'obs_{poly}', linewidth=6)
-            pyplot.plot(m_res[np.argmax(aray_mean), :, poly - 1], label=f'max_{np.argmax(aray_mean)}')
-            pyplot.plot(m_res[np.argmin(aray_mean), :, poly - 1], label=f'min_{np.argmin(aray_mean)}')
-            _plot_poly(poly, f'{save_plot[-4:-1]}_a/i', save_plot)
+        # for j, poly in enumerate(obs['x0'].values):
+        #     pyplot.ioff()
+        #     pyplot.plot(obs[var[0]].values[:, j], label=f'obs_{poly}', linewidth=6)
+        #     for i in range(len(m_res)):
+        #         pyplot.plot(m_res[i, :, poly - 1])
+        #     _plot_poly(j, f'{tipo_proc}_{obj_func}', save_plot)
+        #     pyplot.close('all')
+        #
+        #     aray_mean = np.asarray([np.nanmean(m_res[i, :, poly - 1]) for i in range(len(m_res))])
+        #     pyplot.plot(obs[var[0]].values[:, j], label=f'obs_{poly}', linewidth=6)
+        #     pyplot.plot(m_res[np.argmax(aray_mean), :, poly - 1], label=f'max_{np.argmax(aray_mean)}', linewidth=6)
+        #     pyplot.plot(m_res[np.argmin(aray_mean), :, poly - 1], label=f'min_{np.argmin(aray_mean)}', linewidth=6)
+        #     _plot_poly(poly, f'{tipo_proc}_{obj_func}', save_plot)
 
         if m_res.shape[1] != len(obs['n']): #41!=42
             raise ValueError("El valor analógico no coincide con el eje de tiempo de la observación.")
@@ -1951,7 +1952,7 @@ class Modelo(object):
                 n_res[:, :, ind] = m_res[:, :, v - 1]
             if tipo_proc != 'CI':
                 nn_res = np.zeros([1, *n_res.shape[1:]])
-                for p in range(obs['x0'].values.size):
+                for p in range(len(obs['x0'])):
                     for t in range(len(obs['n'])):
                         nn_res[:, t, p] = np.average(n_res[:, t, p], weights=wt)
             else:
@@ -1964,7 +1965,7 @@ class Modelo(object):
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)
         else:
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc,
-                                            obj_func=obj_func, save_plot=save_plot, gard=guardar)
+                                            obj_func=obj_func, save_plot=save_plot, gard=guardar, warmup_period=warmup_period)
 
         if guardar and tipo_proc is not None:
             np.save(guardar+f"_{tipo_proc.lower()}", resultados)

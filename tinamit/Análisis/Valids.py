@@ -9,7 +9,7 @@ from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova
 
 
 def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None, save_plot=None,
-                       gard=None):
+                       gard=None, warmup_period=None):
     """
 
     patt_vec['bp_params']
@@ -37,10 +37,12 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None
     else:
         mu_obs_matr, sg_obs_matr, obs_norm = aplastar(obs, l_vars)  # 6, 6, 6*21, obs_norm: dict {'y': 6*21}
         obs_norm = {va: obs_norm for va in l_vars}  # 63, 21*6, [nparray[38, 61]]
-        sims_norm = {vr: np.zeros_like(matrs_simul[vr][0]) for vr in l_vars}
+        sims_norm = {vr: np.zeros_like(matrs_simul[vr]) for vr in l_vars}
         for vr, matrs in matrs_simul.items():
-            sims_norm[vr] = (matrs - mu_obs_matr) / sg_obs_matr  # 1*41*19
-        sims_norm_T = {vr: np.array(sims_norm[vr].T) for vr in l_vars}  # {'y': 41*19}
+            for i in range(len(matrs)):
+                for t in range(len(obs['tiempo'])):
+                    sims_norm[vr][i][t] = (matrs[i, t, :] - mu_obs_matr) / sg_obs_matr  # 1*41*19
+                sims_norm_T = {vr: np.array(sims_norm[vr][i, : ].T) for vr in l_vars}  # {'y': 41*19}
 
     egr = {vr: {} for vr in l_vars}
     if tipo_proc is None:
@@ -65,21 +67,25 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None
             egr['éxito'] = all(v >= tol for vr in l_vars for v in egr['vars'][vr]['ens'])
 
     elif tipo_proc == 'CI':
-        def _ci(sim, obs):  # 495*41*19, 41*19
-            a = {}
-            for t in range(len(obs)):
-                a.update(
-                    {f'season-{t}': [estad.percentileofscore(sim[:, t, p], obs[t, p]) for p in range(obs.shape[1])]})
-                a[f'season-{t}'] = np.asarray(
-                    [len([i for i in a[f'season-{t}'] if i <= j]) / obs.shape[1] for j in np.arange(10, 100, 10)])
+        def _ci(sim_norm, obs_norm):  # 495*41*19, 41*19
+            a = {f'season-{t+warmup_period}': [ ] for t in range(len(obs_norm))}
+            for t in range(len(obs_norm)):
+                for p in range(obs_norm.shape[1]):
+                    if np.isnan(obs_norm[t, p]):
+                        a[f'season-{t + warmup_period}'].append(np.nan)
+                    else:
+                        a[f'season-{t + warmup_period}'].append(estad.percentileofscore(sim_norm[:, t, p], obs_norm[t, p]))
+                a[f'season-{t + warmup_period}'] = [estad.percentileofscore(
+                    np.asarray([x for x in a[f'season-{t + warmup_period}'] if not np.isnan(x)]), j, kind='weak')
+                    for j in np.arange(10, 110, 10)]
                 pyplot.ioff()
-                pyplot.plot(np.arange(0.1, 1, 0.1), 'g-.', label="Theoratical CI")
-                pyplot.plot(a[f'season-{t}'], 'r.-', label=f"Season {t} CI")
-                pyplot.xticks(np.arange(0, 10), (f'{j}0%CI' for j in range(1, 10)))
-                pyplot.yticks(np.arange(0.1, 1, 0.1), [float(f"{i}"[:3]) for i in np.arange(0.1, 1, 0.1)])
+                pyplot.plot(np.arange(0.1, 1.1, 0.1), 'g-.', label="Theoratical CI")
+                pyplot.plot([i*0.01 for i in a[f'season-{t+warmup_period}']], 'r.-', label=f"Season {t} CI")
+                pyplot.xticks(np.arange(0, 11), (f'{j}0%CI' for j in range(1, 11)))
+                pyplot.yticks(np.arange(0.1, 1.1, 0.1), [float(f"{i}"[:3]) for i in np.arange(0.1, 1.1, 0.1)])
                 _plot_poly(t, 'CI_season' + tipo_proc, save_plot)
             return a
-        egr[vr] = _ci(matrs,obs_norm[vr].T)
+        egr[vr] = _ci(sims_norm[vr],obs_norm[vr].T)
 
     elif tipo_proc == 'patrón':
         trend, linear, eval, len_bparam= PatrónValidTest.trend_compare(obs, obs_norm, sims_norm_T, tipo_proc,
@@ -89,13 +95,13 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None
         kappa, icc = coeff_agreement(linear, trend, obs['x0'].values)
         egr[vr]['kappa'] = kappa
         egr[vr]['icc'] = icc
-        diff_like, diff_wt =gen_gof('patrón', sim=np.asarray(
+        diff_like, diff_wt =gen_gof(tipo_proc, sim=np.asarray(
             [trend['t_sim']['diff_patt'][p]['y_pred'] for p in trend['t_sim']['diff_patt']]), obj_func='AIC',
                       eval=np.asarray([trend['t_obs'][p]['y_pred'] for p in trend['t_sim']['diff_patt']]),
                       len_bparam=len_bparam, valid='pattern-pattern')
         egr[vr]['aic_diff_patt'] = {'like': diff_like, 'wt': diff_wt}
         if gard:
-            np.save(gard+tipo_proc, trend)
+            np.save(gard+'_'+tipo_proc+'_trend', trend)
         return egr
     else:
         egr[vr] = {obj_func.lower(): gen_gof('multidim', sim=sims_norm_T[vr], obj_func=obj_func,
@@ -227,13 +233,13 @@ class PatrónValidTest(object):
 
         for vr in vars_interés:
             print("\n****Start detecting observed data****\n")
-            t_obs = patro_proces(tipo_proc, obs, obs_norm[vr], vars_interés, 'valid_multi_tests')
+            t_obs = patro_proces(tipo_proc, obs, obs_norm[vr], valid='valid_multi_tests')
             trend['t_obs'] = t_obs[0]
             trend['t_obs'].update({'best_patt': [list(v.keys())[0] for i, v in t_obs[0].items()]})
             linear['t_obs'].update({p: list(t_obs[2][p]['linear']['bp_params'].values()) for p in t_obs[2]})
 
             print("\n****Start detecting simulated data****\n")
-            t_sim = patro_proces(tipo_proc, obs, sim_norm[vr], vars_interés, 'valid_multi_tests')
+            t_sim = patro_proces(tipo_proc, obs, sim_norm[vr], valid='valid_multi_tests')
             trend['t_sim'].update({'best_patt': [list(v.keys())[0] for i, v in t_sim[0].items()]})
             linear['t_sim'].update({p: list(t_sim[2][p]['linear']['bp_params'].values()) for p in t_sim[2]})
 
@@ -252,26 +258,26 @@ class PatrónValidTest(object):
                     trend['t_sim']['diff_patt'][poly[ind]] = {f'{patt}': t_sim[2][poly[ind]][patt]}
 
             x_data = np.arange(len(obs['n']))
-            sim = {}
+
             for p, d_v in trend['t_sim']['diff_patt'].items():
                 y_pred = np.asarray(
                     predict(x_data, list(trend['t_sim']['diff_patt'][p].values())[0]['bp_params'], list(d_v.keys())[0]))
-                sim[p] = {list(d_v.keys())[0]: list(d_v.values())[0], 'y_pred': y_pred}
-                trend['t_sim']['diff_patt'][p] = sim[p]
-            del sim
+                trend['t_sim']['diff_patt'][p] = {list(d_v.keys())[0]: list(d_v.values())[0], 'y_pred': y_pred}
+
             if save_plot is not None:
+                pyplot.ioff()
                 for p in poly:
                     if p in trend['t_sim']['same_patt']:
                         same_occr = trend['t_sim']['same_patt'][p]['y_pred']
-                        pyplot.ioff()
                         pyplot.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
-                        pyplot.plot(same_occr, 'r-.', label=f"t_sim_same")
-                        _plot_poly(p, 't_poly', save_plot)
+                        pyplot.plot(same_occr, 'r-.', label=f"same")
+                        _plot_poly(p, 'Same_pattern', save_plot)
                     else:
                         diff_occr = trend['t_sim']['diff_patt'][p]['y_pred']
                         pyplot.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
-                        pyplot.plot(diff_occr, 'b.', label=f"t_sim_diff")
-                        _plot_poly(p,'t_poly', save_plot)
+                        pyplot.plot(diff_occr, 'b.', label=f"diff")
+                        _plot_poly(p,'Diff_pattern', save_plot)
+                    pyplot.close('all')
 
             return trend, linear, matriz_vacía, t_obs[1]
 
