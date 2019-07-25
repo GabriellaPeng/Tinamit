@@ -304,10 +304,6 @@ def de_standardize(norm_b_param, y_data, tipo_egr):
                 'constant': norm_b_param[4] * np.nanstd(y_data) + np.nanmean(y_data)}
 
 
-def compute_gof(y_predict, y_obs):
-    return compute_nsc(y_predict, y_obs), compute_rmse(y_predict, y_obs)
-
-
 def compute_rmse(y_predict, y_obs):
     return np.sqrt(np.nanmean(((y_predict - y_obs) ** 2)))
 
@@ -321,12 +317,6 @@ def nse(obs, sim):
     # compute coefficient
     return 1 - (numerator / denominator)
 
-# def compute_rmse(y_predict, y_obs):
-#     if not isinstance(y_predict, np.ndarray):
-#         y_predict = np.asarray(y_predict)
-#     if not isinstance(y_obs, np.ndarray):
-#         y_obs = np.asarray(y_obs)
-#     return np.linalg.norm(y_predict - y_obs) / np.sqrt(len(y_predict))
 def compute_nsc(y_predict, y_obs):
     # Nash-Sutcliffe Coefficient
     return 1 - np.nansum(((y_predict - y_obs) ** 2) / np.nansum((y_obs - np.nanmean(y_obs)) ** 2))
@@ -437,3 +427,25 @@ def ICC_rep_anova(Y):
     r_var = (MSR - MSE) / nb_conditions  # variance between subjects
 
     return ICC, r_var, e_var, session_effect_F, dfc, dfe
+
+def inequal_theil(y_predict, y_obs):
+    mu_pred = np.nanmean(y_predict)
+    mu_obs = np.nanmean(y_obs)
+
+    std_pred = np.nanstd(y_predict)
+    std_obs = np.nanstd(y_obs)
+
+    mse = np.nanmean((y_predict - y_obs) ** 2)
+
+    r = np.nanmean(((y_obs - mu_obs) * (y_predict - mu_pred)) / (std_obs * std_pred))
+
+    # um = (mu_pred ** 2 - mu_obs ** 2) / mse
+    # us = (std_pred ** 2 - std_obs ** 2) / mse
+    # uc = 2 * (1 - r) * std_pred * std_obs / mse
+
+    um = (mu_pred-mu_obs)**2/ mse
+    us = (std_pred -std_obs) ** 2/ mse
+    uc = 2 * (1 - r)*std_pred * std_obs/ mse
+
+    return um, us, uc
+

@@ -1,4 +1,3 @@
-import os
 import tempfile
 from warnings import warn as avisar
 
@@ -10,7 +9,7 @@ from scipy.optimize import minimize
 from scipy.stats import gaussian_kde
 
 from tinamit.Análisis.Datos import BDtexto, gen_SuperBD, SuperBD
-from tinamit.Análisis.Sens.behavior import aic, compute_rmse, nse
+from tinamit.Análisis.Sens.behavior import compute_rmse, nse, simple_shape
 from tinamit.Análisis.sintaxis import Ecuación
 from tinamit.Calib.ej.obs_patrón import compute_patron
 from tinamit.config import _
@@ -540,17 +539,15 @@ class CalibradorMod(object):
         símismo.mod = mod
 
     def calibrar(símismo, paráms, líms_paráms, bd, método, vars_obs, n_iter, guardar, corresp_vars=None, tipo_proc=None,
-                 mapa_paráms=None, final_líms_paráms=None, obj_func='AIC', guar_sim=False, egr_spotpy=False):
+                 mapa_paráms=None, final_líms_paráms=None, guar_sim=False, egr_spotpy=False, warmup_period=None, cls=None, obj_func=None):
 
         método = método.lower()
         mod = símismo.mod
         if isinstance(bd, xr.Dataset):
             obs = gen_SuperBD(bd)
-            t_inic = None
         else:
-            obs = _conv_xr(bd, vars_obs)
+            obs = _conv_xr(bd, vars_obs, warmup_period)
             t_final = len(obs['n'])
-            t_inic = obs['n'].values[0]
 
         if corresp_vars is None:
             corresp_vars = {}
@@ -577,23 +574,27 @@ class CalibradorMod(object):
                 else:
                     mod_spotpy = PatrónProc(mod=mod, líms_paráms=líms_paráms, obs=obs, tipo_proc=tipo_proc,
                                             mapa_paráms=mapa_paráms, comp_final_líms=final_líms_paráms,
-                                            obj_func=obj_func, t_final=t_final, t_inic=t_inic, guar_sim=guar_sim
-                                            )
-                if método in ['dream', 'mcmc', 'sceua']:
-                    muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False,
-                                                       alt_objfun=None)
-                else:
-                    muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False)
+                                            t_final=t_final, guar_sim=guar_sim, warmup_period=warmup_period, cls=cls,
+                                            obj_func=obj_func, método=método)
+
+                muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False, alt_objfun=None)
 
                 if final_líms_paráms is not None and método in ['dream', 'demcz', 'sceua']:
-                    if método == 'dream':
-                        muestreador.sample(repetitions=n_iter, runs_after_convergence=n_iter,
-                                           # repetitions= 2000+n_iter
-                                           nChains=len(final_líms_paráms))
-                    elif método == 'sceua':
+                    # if método == 'dream':
+                    #     muestreador.sample(repetitions=n_iter, nChains=len(final_líms_paráms))
+                    if método == 'sceua':
                         muestreador.sample(n_iter, ngs=len(final_líms_paráms) * 3)
-                    elif método == 'demcz':
-                        muestreador.sample(n_iter, nChains=len(final_líms_paráms) * 2)
+                    # elif método == 'demcz':
+                    #     muestreador.sample(n_iter, nChains=len(final_líms_paráms))
+
+                elif método == 'fscabc':
+                    if tipo_proc == 'patrón':
+                        muestreador.sample(n_iter, peps=-100)
+                    elif obj_func == 'rmse':
+                        muestreador.sample(n_iter, peps=0.4)
+                    elif obj_func == 'nse':
+                        muestreador.sample(n_iter, peps=-0.5)
+
                 else:
                     muestreador.sample(n_iter)
 
@@ -618,40 +619,42 @@ class CalibradorMod(object):
             trzs = trzs[-n_iter:]
             prob = probs[-n_iter:]
 
-        rango_prob = (prob.min(), prob.max())
-        pesos = (prob - rango_prob[0]) / (rango_prob[1] - rango_prob[0])  # those > 0.8 like, weight distribution
+        pesos = (prob - np.nanmin(probs)) / np.ptp(probs)  # those > 0.8 like, weight distribution
 
-        res = {'buenas': np.where(buenas)[0], 'peso': pesos, 'máx_prob': rango_prob[1], 'prob': probs}
         if tipo_proc is None:
+            res = {'buenas': np.where(buenas)[0], 'peso': pesos, 'máx_prob': np.nanmax(probs), 'prob': probs}
             for i, p in enumerate(paráms):
                 col_p = 'par' + str(i)
                 res[p] = {'dist': trzs[col_p], 'val': _calc_máx_trz(trzs[col_p])}
             # calculate the maxi distribution of the simulation results, and the weights
         else:
+            res = {'buenas': np.where(buenas)[0], 'prob': probs, 'sampled_prm': {prm: trzs[f'par{par_spotpy[prm]}'] for prm in par_spotpy}}
+
             for i in range(len(list(trzs.values())[0])):
                 x = np.asarray([val[i] for val in list(trzs.values())])
                 val_inic = gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms)
                 for k, val in val_inic.items():
                     if k in res:
-                        res[k]['dist'].append(val)
+                        res[k].append(val)
                     else:
-                        res[k] = {'dist': [val], 'val': []}
-            for k, v in res.items():
-                if k in líms_paráms:
-                    if isinstance(líms_paráms[k], tuple):
-                        res[k]['val'].append(_calc_máx_trz(trzs['par' + par_spotpy[k]]))
-                    elif isinstance(líms_paráms[k], list):
-                        res[k]['val'].extend(
-                            [_calc_máx_trz(trzs['par' + par_spotpy[f'{k}_{str(i)}']]) for i in
-                             range(len(líms_paráms[k]))])
-                elif isinstance(v, dict):
-                    for p, mapa in mapa_paráms.items():
-                        if isinstance(mapa, dict):
-                            res[k]['val'].extend(_calc_máx_trz(trzs['par' + par_spotpy[f'{p}_{str(i)}']]) for i in
-                                                 range(len(líms_paráms[p])))
+                        res[k] = [val]
+            # for k, v in res.items():
+            #     if k in líms_paráms:
+            #         if isinstance(líms_paráms[k], tuple):
+            #             res[k]['val'].append(_calc_máx_trz(trzs['par' + par_spotpy[k]]))
+            #         elif isinstance(líms_paráms[k], list):
+            #             res[k]['val'].extend(
+            #                 [_calc_máx_trz(trzs['par' + par_spotpy[f'{k}_{str(i)}']]) for i in
+            #                  range(len(líms_paráms[k]))])
+            #     elif isinstance(v, dict):
+            #         for p, mapa in mapa_paráms.items():
+            #             if isinstance(mapa, dict):
+            #                 res[k]['val'].extend(_calc_máx_trz(trzs['par' + par_spotpy[f'{p}_{str(i)}']]) for i in
+            #                                      range(len(líms_paráms[p])))
         if guardar:
             np.save(guardar, res)
-        return res  # 100*215 (100*6) # dist: 6*100, val:6, peso: 6*100
+
+        return res
 
 
 # Unas funciones auxiliares
@@ -762,14 +765,22 @@ def _calc_máx_trz(trz):
         return np.nan
 
 
-def _conv_xr(datos, vars_obs):  # datos[0] time; datos[1] dict{obspoly: ndarray}
+def _conv_xr(datos, vars_obs, warmup_period=None):  # datos[0] time; datos[1] dict{obspoly: ndarray}
     if isinstance(datos, tuple):
-        matriz_vacía = np.empty([len(list(datos[1].values())[0]), len(datos[1])])  # 60, 38
+        if warmup_period is None:
+            matriz_vacía = np.empty([len(list(datos[1].values())[0]), len(datos[1])])
+        else:
+            datos = list(datos)
+            matriz_vacía = np.empty([len(datos[0]) - warmup_period, len(datos[1])])  # 60, 38
+            datos[0] = datos[0].values[warmup_period:]
     else:
         raise TypeError(_("Por favor agregue o seleccione el tipo correcto de los datos observados."))
 
     for poly, data in datos[1].items():
-        matriz_vacía[:, list(datos[1]).index(poly)] = np.asarray(datos[1][poly])
+        if warmup_period is None:
+            matriz_vacía[:, list(datos[1]).index(poly)] = data
+        else:
+            matriz_vacía[:, list(datos[1]).index(poly)] = data[warmup_period:]
 
     return xr.Dataset(
         data_vars={vars_obs[0]: (('n', 'x0'), matriz_vacía)},
@@ -940,7 +951,6 @@ class ModSpotPy(object):
         return símismo.obs_norm
 
     def objectivefunction(símismo, simulation, evaluation, params=None):
-        # like = spotpy.likelihoods.gaussianLikelihoodMeasErrorOut(evaluation,simulation)
         like = spotpy.objectivefunctions.nashsutcliffe(evaluation, simulation)  # should be ave()
 
         return like
@@ -955,28 +965,27 @@ class ModSpotPy(object):
 class PatrónProc(object):
     itr = 0
 
-    def __init__(símismo, mod, líms_paráms, obs, tipo_proc, mapa_paráms, comp_final_líms, obj_func, t_final,
-                 t_inic, guar_sim):
-        símismo.paráms = [
-            spotpy.parameter.Uniform(str(list(comp_final_líms).index(p)), low=d[0], high=d[1],
-                                     optguess=(d[0] + d[1]) / 2)
-            for p, d in comp_final_líms.items()
-        ]
+    def __init__(símismo, mod, líms_paráms, obs, tipo_proc, mapa_paráms, comp_final_líms, t_final,
+                 guar_sim, warmup_period, cls, obj_func, método):
+        símismo.paráms = [spotpy.parameter.Uniform(str(list(comp_final_líms).index(p)), low=d[0], high=d[1],
+                                                   optguess=(d[0] + d[1]) / 2) for p, d in comp_final_líms.items()]
+        spotpy.parameter.logNormal
         símismo.mapa_paráms = mapa_paráms
         símismo.líms_paráms = líms_paráms
         símismo.final_líms_paráms = comp_final_líms
-        símismo.obj_func = obj_func
         símismo.mod = mod
         símismo.guar_sim = guar_sim
         símismo.vars_interés = sorted(list(obs.data_vars))
-        símismo.t_inic = t_inic
         símismo.t_final = t_final
         símismo.tipo_proc = tipo_proc
-        símismo.obs = obs
-        símismo.mu_obs, símismo.sg_obs, símismo.obs_norm = aplastar(obs, símismo.vars_interés)
-
-        símismo.eval, símismo.len_bparam = patro_proces(símismo.tipo_proc, símismo.obs, símismo.obs_norm,
-                                                        símismo.vars_interés)  # multidim: 6*21//21*38//1*1*38
+        símismo.warmup_period = warmup_period
+        símismo.poly = obs['x0'].values
+        símismo.obs = obs[símismo.vars_interés[0]].values
+        símismo.mu_obs, símismo.sg_obs, símismo.obs_norm = aplastar(símismo.poly, símismo.obs)
+        símismo.eval = patro_proces(símismo.tipo_proc, símismo.poly, símismo.obs_norm)
+        símismo.cls = cls
+        símismo.obj_func = obj_func
+        símismo.método = método
 
     def parameters(símismo):
         return spotpy.parameter.generate(símismo.paráms)
@@ -985,75 +994,54 @@ class PatrónProc(object):
         vals_inic = {PatrónProc.itr:
                          gen_val_inic(x, símismo.mapa_paráms, símismo.líms_paráms, símismo.final_líms_paráms)}
 
-        res = símismo.mod.simular_grupo(vars_interés=símismo.vars_interés[0], t_final=41,  # símismo.t_final,
+        res = símismo.mod.simular_grupo(vars_interés=símismo.vars_interés[0], t_final=40,
                                         vals_inic=vals_inic, guardar=símismo.guar_sim)
 
         PatrónProc.itr += 1
 
         if isinstance(res, dict):
-            m_res = np.array([list(res.values())[0][v] for v in símismo.vars_interés][0])  # 42*215
+            m_res = np.asarray(
+                [list(res.values())[0][símismo.vars_interés[0]].values[símismo.warmup_period:, i - 1] for i in
+                 símismo.poly])
+
+            return ((m_res.T - símismo.mu_obs) / símismo.sg_obs)
+
         else:
-            m_res = np.array([res[v].values for v in símismo.vars_interés][0])  # 62*215
-        if m_res.shape[1] != símismo.obs['x0'].values.size:
-            mm_res = np.empty([símismo.obs['n'].values.size, m_res.shape[1]])
-            if m_res.shape[0] != símismo.obs['n'].values.size:
-                if all(m_res[1, :] == 0):
-                    mm_res = np.delete(m_res, 1, 0)
-                else:
-                    mm_res = m_res[1:, :]
-                n_res = np.empty([len(mm_res), símismo.obs['x0'].values.size])
-                for ind, v in enumerate([int(i) for i in símismo.obs['x0'].values]):
-                    n_res[:, ind] = mm_res[:, v - 1]
-            else:
-                raise ValueError(" ")
-        else:
-            n_res = m_res  # 21*6
-        return ((n_res - símismo.mu_obs) / símismo.sg_obs).T  # 62*38 -> 38*62//6*21//18*62
+            m_res = np.array([res[v].values for v in símismo.vars_interés][0])[símismo.warmup_period:]  # 62*215
+
+            return ((m_res - símismo.mu_obs) / símismo.sg_obs)  # 39*18
 
     def evaluation(símismo):
         return símismo.eval
 
     def objectivefunction(símismo, simulation, evaluation, params=None):
-        # like = spotpy.likelihoods.gaussianLikelihoodMeasErrorOut(evaluation,simulation)
-        # like = spotpy.objectivefunctions.nashsutcliffe(evaluation, simulation)
-        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, símismo.obj_func, símismo.len_bparam, obs=símismo.obs,
-                      valid='point-pattern', itr=PatrónProc.itr)[0]
+        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, cls = símismo.cls, obj_func=símismo.obj_func, método = símismo.método)
         return gof
 
 
-def patro_proces(tipo_proc, obs, norm_obs, vars_interés=None, valid=None):
+def patro_proces(tipo_proc, npoly, norm_obs, valid=False):
     if tipo_proc == 'multidim':  # {var: nparray[61, 38]}
-        return norm_obs, 0  # nparray[38, 61]
+        return norm_obs.T  # nparray[38, 61]
+
     elif tipo_proc == 'patrón':
-        if valid == 'valid_multi_tests':
-            best_behaviors, d_patron, d_numero = compute_patron(obs, norm_obs, valid=valid)
-            length_params = [len(list(d_data.values())[0]['bp_params']) for poly, d_data in d_patron.items()]
-            return d_patron, length_params, d_numero
+        if valid:
+            best_behaviors, linear, all_bbehav_params = compute_patron(npoly, norm_obs, valid=valid)
+            return best_behaviors, linear, all_bbehav_params
         else:
-            d_patron = compute_patron(obs, norm_obs, valid=valid)[1]
-            matriz_vacía = np.empty([obs[vars_interés[0]].values.shape[0], len(d_patron)])  # 41, 19
-            length_params = [len(list(d_data.values())[0]['bp_params']) for poly, d_data in d_patron.items()]
-            for poly, d_data in d_patron.items():
-                matriz_vacía[:, list(d_patron).index(poly)] = np.asarray(d_patron[poly]['y_pred'])
-            return matriz_vacía.T, length_params  # (nparray 38*61, [list of the length of the bp_params])
+            best_behaviors = compute_patron(npoly, norm_obs)
+            return best_behaviors
 
 
-def aplastar(datos, vars_interés):
-    npoly = datos['x0'].values
-    if isinstance(datos, xr.Dataset):
-        dato = np.asarray([datos[v].values for v in vars_interés][0])  # 61*38
-        mu = np.array([np.nanmean(dato[:, p]) for p in list((range(len(npoly))))])  # 215
-        sg = np.array([np.nanstd(dato[:, p]) for p in list((range(len(npoly))))])  # 215
+def aplastar(npoly, dato):
+    mu = np.array([np.nanmean(dato[:, i]) for i, p in enumerate(npoly)])  # 215
+    sg = np.array([np.nanstd(dato[:, i]) for i, p in enumerate(npoly)])  # 215
 
-        norm = np.array([((dato[:, p] - mu[p]) / sg[p]) for p in list((range(len(npoly))))])  # 38*61
-        return mu, sg, norm
+    norm = np.array([((dato[:, i] - mu[i]) / sg[i]) for i, p in enumerate(npoly)])  # 38*61
+    return mu, sg, norm
 
 
 def gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms):
-    # if isinstance(x, np.ndarray):
     vals_inic = {p: np.array(x[list(final_líms_paráms).index(p)]) for p in líms_paráms if p in final_líms_paráms}
-    # else:
-    # raise TypeError(f"simulation results {x} must be the type of np.ndarray")
 
     for p, mapa in mapa_paráms.items():
         if isinstance(mapa, list):
@@ -1078,72 +1066,87 @@ def gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms):
     return vals_inic
 
 
-path = "D:\Thesis\pythonProject\localuse\Dt\Calib\like\calib\\dream"
-save_path = f"{path}\\dream\\"
-
-def gen_gof(tipo_proc, sim=None, eval=None, obj_func=None, len_bparam=None, valid=None, obs=None, itr=None):
-    # global save_path
-    def _classify(aic_array):
-        maxi = np.nanmax(aic_array)
-        mini = np.nanmin(aic_array)
-        jump = (maxi - mini) / 3
-        cls1 = [i for i in aic_array if int(i) in range(int(mini - 0.5), int(mini + jump))]
-        cls2 = [i for i in aic_array if int(i) in range(int(mini + jump - 0.5), int(mini + 2 * jump))]
-        cls3 = [i for i in aic_array if int(i) in range(int(mini + 2 * jump - 0.5), int(mini + 3 * jump + 0.5))]
-        best = np.asarray(max([cls1, cls2, cls3], key=len))
-        return np.nanmean(best), len(best)
-
+def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, método=None):
     if tipo_proc == 'patrón':
-        if valid == 'pattern-pattern':
-            len_obs_poly = np.empty([len(eval)])
-            for i, y_sim in enumerate(sim):
-                if obj_func == 'AIC':
-                    t_sim = patro_proces(tipo_proc, obs, sim, valid="valid_multi_tests")[0]
-                    len_obs_poly[i] = -aic(len_bparam[i], eval[i], t_sim[list(t_sim)[i]]['y_pred'])
-            like, wt = _classify(len_obs_poly)
-            return like
-        elif valid == 'point-pattern':
-            len_valid_sim = np.empty([len(len_bparam)])  # 20*poly6
-            for i, y_sim in enumerate(sim):  # i=[1, 20], pa=[6*21]  # j=1, 6; poly [21]
-                if obj_func == 'AIC':
-                    len_valid_sim[i] = -aic(len_bparam[i], eval[i], y_sim)
-            like, wt = _classify(len_valid_sim)
-            # if itr == 0 :
-            #     if not os.path.isfile(f"{path}\\dream\\0.npy"):
-            #         save_path = f"{path}\\dream\\"
-            #     elif not os.path.isfile(f"{path}\\dream_rev\\0.npy"):
-            #         save_path = f"{path}\\dream_rev\\"
-            #     elif not os.path.isfile(f"{path}\\dream_nse\\0.npy"):
-            #         save_path = f"{path}\\dream_nse\\"
-            #     elif not os.path.isfile(f"{path}\\dream_nse_rev\\0.npy"):
-            #         save_path = f"{path}\\dream_nse_rev\\"
-            #
-            # np.save(save_path + f"{itr}", (like, wt))
-            return like, len_valid_sim
+        likes = np.zeros([len(eval)])
+        poly = list(eval.keys())
+        linear = {}
+        shps = {}
+        for p, best_behav in eval.items():
+            shp = simple_shape(np.arange(1, sim.shape[0] + 1), sim[:, poly.index(p)], best_behav, gof=True)
+            likes[poly.index(p)] = shp['gof']['aic']
+            if valid:
+                shps[p] = shp
+                linear[p] = simple_shape(np.arange(1, sim.shape[0] + 1), sim[:, poly.index(p)], 'linear', gof=True)
+        if valid:
+            return likes, linear, shps
+
+        elif método == 'abc' or método == 'sceua' or método == 'fscabc':
+            return _cls_objfc(cls=cls, obj_func='aic', min_max='min', likes=likes)
+        else:
+            return _cls_objfc(cls=cls, obj_func='aic', min_max='max', likes=likes)
 
     elif tipo_proc == 'multidim':
-        if eval.shape == sim.shape:
-            len_aray = np.empty(eval.shape[0])
-            for i in range(eval.shape[0]):
-                if obj_func == 'NSE':
-                    len_aray[i] = nse(eval[i], sim[i])
-                elif obj_func == 'rmse':
-                    compute_rmse(eval[i], sim[i])
-            like, wt = _classify(len_aray)
-            if valid is not None:
-                return like, len_aray
+        if eval.shape == sim.shape:  # 39*18
+            poly = eval.shape[1]
+            likes = np.zeros(poly)
+            for i in range(poly):
+                if obj_func.lower() == 'nse':
+                    likes[i] = nse(eval[:, i], sim[:, i])
+                elif obj_func.lower() == 'rmse':
+                    likes[i] = compute_rmse(eval[:, i], sim[:, i])
+                else:
+                    raise ValueError(f"{obj_func} is not considered")
+            if valid:
+                return likes
             else:
-                return like
+                if método == 'abc' or método == 'sceua' or método == 'fscabc':
+                    return _cls_objfc(cls=cls, obj_func=obj_func, min_max='min', likes=likes)
+                else:
+                    return _cls_objfc(cls=cls, obj_func=obj_func, min_max='max', likes=likes)
+
+
+def _cls_objfc(cls, obj_func, min_max, likes):
+    if min_max == 'min':
+        if cls:
+            if obj_func == 'nse':
+                return -_classify(likes)
+            elif obj_func == 'rmse' or obj_func=='aic':
+                return _classify(likes)
+            else:
+                raise ValueError(f"{obj_func} is not considered")
         else:
-            like_wt = []
-            len_aray = np.empty([len(sim), eval.shape[0]])
-            for i in range(len(sim)):
-                for j in range(eval.shape[0]):
-                    if obj_func == 'NSE':
-                        len_aray[i, j] = nse(eval[j], sim[i, j])
-                    elif obj_func == 'rmse':
-                        len_aray[i, j] = compute_rmse(eval[j], sim[i, j])
-            for i in range(len(len_aray)):
-                like, wt = _classify(len_aray[i])
-                like_wt.append([like, wt])
-            return like_wt
+            if obj_func == 'nse':
+                return -np.nanmean(likes)
+            elif obj_func == 'rmse' or obj_func=='aic':
+                return np.nanmean(likes)
+            else:
+                raise ValueError(f"{obj_func} is not considered")
+
+    elif min_max == 'max':
+        if cls:
+            if obj_func == 'nse':
+                return _classify(likes)
+            elif obj_func == 'rmse' or obj_func=='aic':
+                return -_classify(likes)
+            else:
+                raise ValueError(f"{obj_func} is not considered")
+        else:
+            if obj_func == 'nse':
+                return np.nanmean(likes)
+            elif obj_func == 'rmse' or obj_func=='aic':
+                return -np.nanmean(likes)
+            else:
+                raise ValueError(f"{obj_func} is not considered")
+
+
+
+def _classify(l_likes):
+    maxi = np.nanmax(l_likes)
+    mini = np.nanmin(l_likes)
+    jump = (maxi - mini) / 3
+    cls1 = [i for i in l_likes if int(i) in range(int(mini - 0.5), int(mini + jump))]
+    cls2 = [i for i in l_likes if int(i) in range(int(mini + jump - 0.5), int(mini + 2 * jump))]
+    cls3 = [i for i in l_likes if int(i) in range(int(mini + 2 * jump - 0.5), int(mini + 3 * jump + 0.5))]
+    best = np.asarray(max([cls1, cls2, cls3], key=len))
+    return np.nanmean(best)
