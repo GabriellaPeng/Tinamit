@@ -41,6 +41,8 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
 
         ci_sim = (matrs_simul[l_vars[0]]['all_res'] - mu_obs_matr) / sg_obs_matr
         wt_sims = (matrs_simul[l_vars[0]]['wt_res'] - mu_obs_matr) / sg_obs_matr
+        mu_sims = (matrs_simul[l_vars[0]]['mu_res'] - mu_obs_matr) / sg_obs_matr
+        mdn_sims = (matrs_simul[l_vars[0]]['mdn_res'] - mu_obs_matr) / sg_obs_matr
 
     egr = {vr: {} for vr in l_vars}
 
@@ -55,7 +57,7 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
 
     for vr in l_vars:
 
-        def _ci(sim_norm, obs_norm):  # 495*41*19, 41*19
+        def _ci(sim_norm, obs_norm, wt_norm, mu_norm, mdn_norm):  # 495*41*19, 41*19 TODO: CHANGE HERE!!
             a = np.zeros_like(obs_norm, dtype=float)
             for t in range(len(obs_norm)):
                 for p in range(obs_norm.shape[1]):
@@ -85,7 +87,7 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
 
             return a
 
-        egr[vr]['CI'] = _ci(ci_sim, obs_norm[vr])
+        egr[vr]['CI'] = _ci(ci_sim, obs_norm[vr], wt_sims[vr], mu_sims[vr], mdn_sims[vr]) #TODO: CHANGE HERE!!
 
         if tipo_proc == 'multidim':
             egr[vr][obj_func] = gen_gof('multidim', sim=wt_sims[0], eval=obs_norm[vr], valid=True, obj_func=obj_func,

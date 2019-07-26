@@ -1926,11 +1926,15 @@ class Modelo(object):
             matrs_simul = {vr: np.array([d[vr].values for d in res_simul.values()]) for vr in l_vars}
         else:
             wt_res = np.zeros([1, *top_res.shape[1:]])
+            mu_res = np.zeros([1, *top_res.shape[1:]])
+            mdn_res = np.zeros([1, *top_res.shape[1:]])
             for p in range(len(obs['x0'])):
                 for t in range(len(obs['n'])):
                     wt_res[:, t, p] = np.average(top_res[:, t, p], weights=wt)
+                    mu_res[:, t, p]  = np.mean(top_res[:, t, p])
+                    mdn_res[:, t, p]  = np.median(top_res[:, t, p])
 
-            matrs_simul = {vr: {'all_res': all_res, 'wt_res': wt_res} for vr in l_vars}
+            matrs_simul = {vr: {'all_res': all_res, 'wt_res': wt_res, 'mu_res': mu_res, 'mdn_res': mdn_res} for vr in l_vars}
 
         if tipo_proc is None:
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)

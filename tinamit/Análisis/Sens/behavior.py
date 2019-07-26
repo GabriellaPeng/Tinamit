@@ -11,11 +11,11 @@ def predict(x_data, parameters, pattern):
         return parameters['y_intercept'] * (parameters['g_d'] ** x_data) + parameters['constant']
     elif pattern == 'logístico':
         return parameters['maxi_val'] / (1 + np.exp(-parameters['g_d'] * x_data + parameters['mid_point'])) + \
-               parameters['constant']
+               parameters['constant'] #overflow encountered in exp
     elif pattern == 'inverso':
         return parameters['g_d'] / (x_data + parameters['phi']) + parameters['constant']
     elif pattern == 'log':
-        return parameters['g_d'] * np.log(x_data + parameters['phi']) + parameters['constant']
+        return parameters['g_d'] * np.log(x_data + parameters['phi']) + parameters['constant'] #invalid value encountered in log
     elif pattern == 'oscilación':
         return parameters['amplitude'] * np.sin(parameters['period'] * x_data + parameters['phi']) + parameters[
             'constant']
@@ -89,7 +89,7 @@ def exponencial(x, x_data):
 
 
 def logístico(x, x_data):
-    return (x[0] / (1 + np.exp(-x[1] * x_data + x[2]))) + x[3]
+    return (x[0] / (1 + np.exp(-x[1] * x_data + x[2]))) + x[3] #overflow encountered in exp
 
 
 def inverso(x, x_data):
@@ -97,7 +97,7 @@ def inverso(x, x_data):
 
 
 def log(x, x_data):
-    return x[0] * np.log(x_data + x[1]) + x[2]
+    return x[0] * np.log(x_data + x[1]) + x[2] #invalid value encountered in log
 
 
 def oscilación(x, x_data):
@@ -105,7 +105,7 @@ def oscilación(x, x_data):
 
 
 def oscilación_aten(x, x_data):
-    return np.exp(x[0] * x_data) * x[1] * np.sin(x[2] * x_data + x[3]) + x[4]
+    return np.exp(x[0] * x_data) * x[1] * np.sin(x[2] * x_data + x[3]) + x[4] # overflow encountered in exp, overflow encountered in multiply
 
 
 def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False):
@@ -271,6 +271,8 @@ def superposition(x_data, y_data):
 
 
 def de_standardize(norm_b_param, y_data, tipo_egr):
+    if all(np.isnan(i) for i in y_data):
+        y_data = np.zeros_like(y_data)
     if tipo_egr == 'linear':
         return {'slope': norm_b_param[0] * np.nanstd(y_data),
                 'intercept': norm_b_param[1] * np.nanstd(y_data) + np.nanmean(y_data)}
@@ -304,8 +306,12 @@ def de_standardize(norm_b_param, y_data, tipo_egr):
                 'constant': norm_b_param[4] * np.nanstd(y_data) + np.nanmean(y_data)}
 
 
+def compute_gof(y_predict, y_obs):
+    return compute_nsc(y_predict, y_obs), compute_rmse(y_predict, y_obs)
+
+
 def compute_rmse(y_predict, y_obs):
-    return np.sqrt(np.nanmean(((y_predict - y_obs) ** 2)))
+    return np.sqrt(np.nanmean(((y_predict - y_obs) ** 2))) #overflow encountered in square, Mean of empty slice
 
 def nse(obs, sim):
     s, e = np.array(sim), np.array(obs)
@@ -316,6 +322,7 @@ def nse(obs, sim):
     denominator = np.nansum((e - mean_observed) ** 2)
     # compute coefficient
     return 1 - (numerator / denominator)
+
 
 def compute_nsc(y_predict, y_obs):
     # Nash-Sutcliffe Coefficient
@@ -428,6 +435,81 @@ def ICC_rep_anova(Y):
 
     return ICC, r_var, e_var, session_effect_F, dfc, dfe
 
+
+def icc(Y, icc_type='icc2'):
+    ''' Calculate intraclass correlation coefficient for data within
+                     Brain_Data class
+
+                 Code coppied from:
+                 https://github.com/cosanlab/nltools/blob/master/nltools/data/brain_data.py
+
+                 ICC Formulas are based on:
+                 Shrout, P. E., & Fleiss, J. L. (1979). Intraclass correlations: uses in
+                 assessing rater reliability. Psychological bulletin, 86(2), 420.
+                 icc1:  x_ij = mu + beta_j + w_ij
+                 icc2/3:  x_ij = mu + alpha_i + beta_j + (ab)_ij + epsilon_ij
+                 Code modifed from nipype algorithms.icc
+                 https://github.com/nipy/nipype/blob/master/nipype/algorithms/icc.py
+                 Args:
+                     icc_type: type of icc to calculate (icc: voxel random effect,
+                             icc2: voxel and column random effect, icc3: voxel and
+                             column fixed effect)
+                 Returns:
+                     ICC: (np.array) intraclass correlation coefficient
+                 '''
+
+    [n, k] = Y.shape
+
+    # Degrees of Freedom
+    dfc = k - 1
+    dfe = (n - 1) * (k - 1)
+    dfr = n - 1
+
+    # Sum Square Total
+    mean_Y = np.mean(Y)
+    SST = ((Y - mean_Y) ** 2).sum()
+
+    # create the design matrix for the different levels
+    x = np.kron(np.eye(k), np.ones((n, 1)))  # sessions
+    x0 = np.tile(np.eye(n), (k, 1))  # subjects
+    X = np.hstack([x, x0])
+
+    # Sum Square Error
+    predicted_Y = np.dot(np.dot(np.dot(X, np.linalg.pinv(np.dot(X.T, X))),
+                                X.T), Y.flatten('F'))
+    residuals = Y.flatten('F') - predicted_Y
+    SSE = (residuals ** 2).sum()
+
+    MSE = SSE / dfe
+
+    # Sum square column effect - between colums
+    SSC = ((np.mean(Y, 0) - mean_Y) ** 2).sum() * n
+    MSC = SSC / dfc / n
+
+    # Sum Square subject effect - between rows/subjects
+    SSR = SST - SSC - SSE
+    MSR = SSR / dfr
+
+    if icc_type == 'icc1':
+        # ICC(2,1) = (mean square subject - mean square error) /
+        # (mean square subject + (k-1)*mean square error +
+        # k*(mean square columns - mean square error)/n)
+        # ICC = (MSR - MSRW) / (MSR + (k-1) * MSRW)
+        NotImplementedError("This method isn't implemented yet.")
+
+    elif icc_type == 'icc2':
+        # ICC(2,1) = (mean square subject - mean square error) /
+        # (mean square subject + (k-1)*mean square error +
+        # k*(mean square columns - mean square error)/n)
+        ICC = (MSR - MSE) / (MSR + (k - 1) * MSE + k * (MSC - MSE) / n)
+
+    elif icc_type == 'icc3':
+        # ICC(3,1) = (mean square subject - mean square error) /
+        # (mean square subject + (k-1)*mean square error)
+        ICC = (MSR - MSE) / (MSR + (k - 1) * MSE)
+
+    return ICC
+
 def inequal_theil(y_predict, y_obs):
     mu_pred = np.nanmean(y_predict)
     mu_obs = np.nanmean(y_obs)
@@ -438,7 +520,6 @@ def inequal_theil(y_predict, y_obs):
     mse = np.nanmean((y_predict - y_obs) ** 2)
 
     r = np.nanmean(((y_obs - mu_obs) * (y_predict - mu_pred)) / (std_obs * std_pred))
-
     # um = (mu_pred ** 2 - mu_obs ** 2) / mse
     # us = (std_pred ** 2 - std_obs ** 2) / mse
     # uc = 2 * (1 - r) * std_pred * std_obs / mse
@@ -448,4 +529,3 @@ def inequal_theil(y_predict, y_obs):
     uc = 2 * (1 - r)*std_pred * std_obs/ mse
 
     return um, us, uc
-
