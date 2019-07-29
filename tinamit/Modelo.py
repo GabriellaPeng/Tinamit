@@ -1934,7 +1934,9 @@ class Modelo(object):
                     mu_res[:, t, p]  = np.mean(top_res[:, t, p])
                     mdn_res[:, t, p]  = np.median(top_res[:, t, p])
 
-            matrs_simul = {vr: {'all_res': all_res, 'wt_res': wt_res, 'mu_res': mu_res, 'mdn_res': mdn_res} for vr in l_vars}
+            matrs_simul = {
+            vr: {'top_res': all_res, 'wt_res': wt_res, 'mu_res': mu_res, 'mdn_res': mdn_res, 'top_prob': prob} for vr in
+            l_vars}
 
         if tipo_proc is None:
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)

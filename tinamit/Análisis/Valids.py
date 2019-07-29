@@ -6,7 +6,8 @@ from pandas.plotting import autocorrelation_plot
 from sklearn.metrics import cohen_kappa_score
 
 from tinamit.Análisis.Calibs import aplastar, patro_proces, gen_gof
-from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova
+from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova, theil_inequal
+from tinamit.Calib.ej.ej_calib.calib_análisis import plot_top_sim_obs, plot_save
 
 
 def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=None, obj_func=None, método=None):
@@ -22,6 +23,7 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
 
     """
     l_vars = list(obs.data_vars)
+    egr = {vr: {} for vr in l_vars}
 
     if tipo_proc is None:
         mu_obs = obs.mean()
@@ -34,19 +36,7 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
         todas_sims = np.concatenate([x for x in sims_norm.values()], axis=1)  # 50*63 (63=21*3), 100*26*6,
         todas_obs = np.concatenate([x for x in obs_norm.values()])  # [63]
         sims_norm_T = {vr: np.array([sims_norm[vr][d, :].T for d in range(len(sims_norm[vr]))]) for vr in l_vars}
-    else:
-        npoly = obs['x0'].values
-        mu_obs_matr, sg_obs_matr, obs_norm = aplastar(npoly, obs[l_vars[0]])  # 6, 6, 6*21, obs_norm: dict {'y': 6*21}
-        obs_norm = {va: obs_norm.T for va in l_vars}  # 63, 21*6, [nparray[38, 61]]
 
-        ci_sim = (matrs_simul[l_vars[0]]['all_res'] - mu_obs_matr) / sg_obs_matr
-        wt_sims = (matrs_simul[l_vars[0]]['wt_res'] - mu_obs_matr) / sg_obs_matr
-        mu_sims = (matrs_simul[l_vars[0]]['mu_res'] - mu_obs_matr) / sg_obs_matr
-        mdn_sims = (matrs_simul[l_vars[0]]['mdn_res'] - mu_obs_matr) / sg_obs_matr
-
-    egr = {vr: {} for vr in l_vars}
-
-    if tipo_proc is None:
         egr = {
             'total': _valid(obs=todas_obs, sim=todas_sims, comport=False),
             'vars': {vr: _valid(obs=obs_norm[vr], sim=sims_norm[vr]) for vr in l_vars},
@@ -55,89 +45,71 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
         egr['éxito'] = all(v >= tol for ll, v in egr['total'].items() if 'ens' in ll) and \
                        all(v >= tol for vr in l_vars for ll, v in egr['vars'][vr].items() if 'ens' in ll)
 
-    for vr in l_vars:
-
-        def _ci(sim_norm, obs_norm, wt_norm, mu_norm, mdn_norm):  # 495*41*19, 41*19 TODO: CHANGE HERE!!
-            a = np.zeros_like(obs_norm, dtype=float)
-            for t in range(len(obs_norm)):
-                for p in range(obs_norm.shape[1]):
-                    if np.isnan(obs_norm[t, p]):
-                        a[t, p] = np.nan
-                    else:
-                        perc = estad.percentileofscore(sim_norm[:, t, p], obs_norm[t, p], kind='weak')
-                        a[t, p] = abs(0.5 - perc / 100) * 2
-            # for t in range(len(obs_norm)):
-            #     percentile = np.divide(np.arange(1, obs_norm.shape[1] + 1), obs_norm.shape[1])
-            #     _plot(np.sort(a[t]), f't-{t}', percentile)
-            for j, p in enumerate(npoly):
-                plt.ioff()
-                plt.figure(figsize=(15, 5))  # cannot set dpi=1000 here, memory error
-                plt.plot(obs_norm[:, j], 'r-', label=f'obs_{p}', linewidth=4)
-                for i in range(len(sim_norm)):
-                    plt.plot(sim_norm[i, :, j], 'b--', linewidth=0.2)
-                percentile = np.divide(np.arange(1, obs_norm.shape[0] + 1), obs_norm.shape[0])
-                plt.xticks(range(len(percentile)), [f"{i}\n{round(t * 100, 1)}%" for i, t in enumerate(a[:, j])],
-                           fontsize=5)
-                for xc in range(len(percentile)):
-                    plt.axvline(x=xc, linewidth=0.2, linestyle=':')
-                plt.xlabel("Season\nConfidential Interval", fontsize=8)  # size of the x-label
-                plt.ylabel("Water Table Depth")
-                _plot_poly(p, 't_ci', save_plot)
-                _ci_plot(percentile, np.sort(a[:, j]), f'Poly-{p}', save_plot)
-
-            return a
-
-        egr[vr]['CI'] = _ci(ci_sim, obs_norm[vr], wt_sims[vr], mu_sims[vr], mdn_sims[vr]) #TODO: CHANGE HERE!!
-
-        if tipo_proc == 'multidim':
-            egr[vr][obj_func] = gen_gof('multidim', sim=wt_sims[0], eval=obs_norm[vr], valid=True, obj_func=obj_func,
-                                        método=método)
-
-        elif tipo_proc == 'patrón':
-            best_behaviors, obs_linear, obs_shps = patro_proces(tipo_proc, npoly, obs_norm[vr], valid=True)
-
-            egr[vr][obj_func], sim_linear, sim_shps = gen_gof(tipo_proc, sim=wt_sims[0], eval=best_behaviors,
-                                                              valid=True, obj_func=obj_func, método=método)  # 19*41
-
-            egr[vr]['linear'], egr[vr]['b_behav'] = coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, npoly)
-
-            return egr
-
-        else:
+        for vr in l_vars:
             egr[vr] = {'nse': gen_gof('multidim', sim=sims_norm_T[vr], obj_func='NSE',
                                       eval=obs_norm[vr])}
             egr['éxito_nse'] = all(v >= tol for vr in l_vars for v in egr[vr]['NSE'])
-    return egr
 
+            return egr
 
-def _plot_poly(p, name, save_plot):
-    handles, labels = plt.gca().get_legend_handles_labels()
-    handle_list, label_list = [], []
-    for handle, label in zip(handles, labels):
-        if label not in label_list:
-            handle_list.append(handle)
-            label_list.append(label)
-    plt.legend(handle_list, label_list)
-    plt.savefig(save_plot + f'{name}_{p}')
-    plt.close('all')
+    else:
+        npoly = obs['x0'].values
 
+        mu_obs_matr, sg_obs_matr, obs_norm = aplastar(npoly, obs[l_vars[0]])  # obs_norm: dict {'y': 6*21}
+        obs_norm = {va: obs_norm.T for va in l_vars}  # [nparray[39*18]]
 
-def _label(xlabel, ylabel, title=None, fontsize=None):
-    plt.xlabel(xlabel, fontsize=fontsize)
-    plt.ylabel(ylabel, fontsize=fontsize)
+        all_sim = (matrs_simul[l_vars[0]]['top_res'] - mu_obs_matr) / sg_obs_matr
+        wt_sims = (matrs_simul[l_vars[0]]['wt_res'] - mu_obs_matr) / sg_obs_matr
+        mu_sims = (matrs_simul[l_vars[0]]['mu_res'] - mu_obs_matr) / sg_obs_matr
+        mdn_sims = (matrs_simul[l_vars[0]]['mdn_res'] - mu_obs_matr) / sg_obs_matr
 
-    if title is not None:
-        plt.title(title, fontsize=fontsize)
+        for vr in l_vars:
 
+            proc_sim = {'weighted_sim': wt_sims[0], 'mean_sim': mu_sims[0], 'median_sim': mdn_sims[0]}
 
-def _ci_plot(x_data, y_data, var, save_plot):
-    plt.ioff()
-    plt.figure(figsize=(11, 4))
-    plt.plot(np.arange(0, 1.1, 0.1), np.arange(0, 1.1, 0.1), 'g-.', label="CI over Percentiles")
-    plt.plot(x_data, y_data, 'r.-', label=f"{var} CI")
-    plt.xticks(x_data, [f'{round(t, 2)}' for t in x_data], fontsize=5.5)
-    plt.yticks(np.arange(0, 1.1, 0.1), [f"{t}%" for t in np.arange(0, 101, 10)])
-    _plot_poly(var, 'ci', save_plot)
+            pcentl = _ci(all_sim, obs_norm[vr])
+
+            plot_top_sim_obs(all_sim, obs_norm[vr], npoly, pcentl, save_plot, proc_sim, método, ci=True)
+
+            egr[vr]['CI'] = pcentl
+
+            best_behaviors, obs_linear, obs_shps = patro_proces(tipo_proc, npoly, obs_norm[vr], valid=True)
+
+            egr[vr][tipo_proc] = {obj_func: { }}
+
+            if tipo_proc == 'multidim':
+                egr[vr][tipo_proc][obj_func] = gen_gof('multidim', sim=wt_sims, eval=obs_norm[vr], valid=True,
+                                            obj_func=obj_func, método=método)
+
+            egr[vr]['Theil'] = {type_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc']} for type_sim in
+                                proc_sim}
+
+            for type_sim, sim_val in proc_sim.items():
+
+                for p in range(len(npoly)):
+                    egr[vr]['Theil'][type_sim]['Um'][p], egr[vr]['Theil'][type_sim]['Us'][p], \
+                    egr[vr]['Theil'][type_sim]['Uc'][
+                        p] = theil_inequal(all_sim[:, p], obs_norm[vr][:, p])
+
+                likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
+                                                      obj_func='AIC', método=método)  # 19*41
+
+                egr[vr][tipo_proc][obj_func][type_sim] = likes
+
+                # TODO: CHECK THE LINEAR FUNCTION
+                egr[vr][tipo_proc][obj_func][type_sim]['linear'], egr[vr][tipo_proc][obj_func][type_sim][
+                    'b_behav'] = coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, npoly)
+
+            egr[vr]['proc_sim'] = proc_sim.update({'all_sim': all_sim, 'obs_norm': obs_norm})
+
+            egr[vr][tipo_proc][obj_func]['all_sim'] = np.zeros([len(all_sim), len(npoly)])
+
+            for n in range(len(all_sim)):
+                egr[vr][tipo_proc][obj_func]['all_sim'][n] = gen_gof('patrón', sim=all_sim[n],
+                                                                        eval=best_behaviors, valid=False,
+                                                                        obj_func='AIC', valid_like=True, método=método)
+
+            return egr
 
 
 def _valid(obs, sim, comport=True, tipo_proc=None):  # obs63, sim 50*63//100*21*6
@@ -255,13 +227,16 @@ def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly):
         [(obs_linear[p]['bp_params']['slope'], sim_linear[p]['bp_params']['slope']) for p in poly]]
 
     linear = {'slp_kp': cohen_kappa_score([i[0] for i in l_sign], [i[1] for i in l_sign]), 'slp_sign': l_sign}
+    linear.update({'slp_kendal': estad.kendalltau([i[0] for i in l_sign], [i[1] for i in l_sign])})
 
     l_sim = [bp for l_bp in [list(sim_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
     l_obs = [bp for l_bp in [list(obs_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
 
-    linear.update({'icc': ICC_rep_anova(np.asarray([l_obs, l_sim]).T)[0]})
+    linear.update({'bp_icc': ICC_rep_anova(np.asarray([l_obs, l_sim]).T)[0]})
 
-    linear.update({'kp': _kp(l_sim, l_obs)})
+    linear.update({'bp_kendal': estad.kendalltau(l_sim, l_obs)[0]})
+
+    linear.update({'bp_kp': _kp(l_sim, l_obs)})
 
     # 1why kp<icc ? 2.why slp_kp<0 # as kp is qualitative and quantitative
 
@@ -282,13 +257,24 @@ def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly):
     b_s = [list(sim_shps[p]['bp_params'].values()) for p in poly]
     b_o = [list(obs_shps[p]['bp_params'].values()) for p in poly]
 
-    best_behav['poly_icc'] = {}
+    best_behav['poly_icc'] = np.zeros([len(poly)])
     for p in range(len(poly)):
-        best_behav['poly_icc'].update({p: ICC_rep_anova(np.asarray([b_o[p], b_s[p]]).T)[0]})
-
-    # icc for best_behav show low concordance btw sim/obs on each of the polygons
+        best_behav['poly_icc'][p] =  ICC_rep_anova(np.asarray([b_o[p], b_s[p]]).T)[0]
 
     return linear, best_behav
+
+
+def _ci(sim_norm, obs_norm):  # 495*41*19, 41*19
+    pcentl = np.zeros_like(obs_norm, dtype=float)
+    for t in range(len(obs_norm)):
+        for p in range(obs_norm.shape[1]):
+            if np.isnan(obs_norm[t, p]):
+                pcentl[t, p] = np.nan
+            else:
+                perc = estad.percentileofscore(sim_norm[:, t, p], obs_norm[t, p], kind='weak')
+                pcentl[t, p] = abs(0.5 - perc / 100) * 2
+
+    return pcentl
 
 
 class PatrónValidTest(object):
@@ -343,12 +329,12 @@ class PatrónValidTest(object):
                         same_occr = trend['t_sim']['same_patt'][p]['y_pred']
                         plt.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
                         plt.plot(same_occr, 'r-.', label=f"same")
-                        _plot_poly(p, 'Same_pattern', save_plot)
+                        plot_save(p, 'Same_pattern', save_plot)
                     else:
                         diff_occr = trend['t_sim']['diff_patt'][p]['y_pred']
                         plt.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
                         plt.plot(diff_occr, 'b.', label=f"diff")
-                        _plot_poly(p, 'Diff_pattern', save_plot)
+                        plot_save(p, 'Diff_pattern', save_plot)
                     plt.close('all')
 
             return trend, linear

@@ -1,241 +1,121 @@
-import operator
-
-from matplotlib import pyplot
+import os
 import numpy as np
-from matplotlib_venn import venn3
 import matplotlib.pyplot as plt
-# calib_dream = np.load("D:\Gaby\Tinamit\Dt\Calib\\real_run\\revserse_res\\calib_reverse-dream.npy").tolist()
-# gard = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\cluster\\"
-from tinamit.Análisis.Valids import _plot_poly, _label
+import matplotlib.colors as mcolors
+import seaborn as sns
+
+from matplotlib.patches import Polygon
+from tinamit.Análisis.Sens.muestr import gen_problema
 from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid
-from tinamit.Calib.ej.info_paráms import _soil_canal
+from tinamit.Calib.ej.info_paráms import _soil_canal, calib_líms_paráms, calib_mapa_paráms
 
 
-def load_path(cls, type, method):
-    gard_point = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\nse\\"
-    calib_point = np.load(gard_point + f'calib-{method}_nse.npy').tolist()
-    point_ind = np.argsort(calib_point['prob'])[-20:]
-    valid_point = np.load(gard_point + f'{method}-nse.npy').tolist()
-
-    gard = f"D:\Gaby\Tinamit\Dt\Calib\\real_run\\{cls}\\"
-    # n = 7
-    # calib_abc = np.load(gard+f'calib_cluster.npy').tolist()
-    calib_dream = np.load(gard + f'calib-{method}.npy').tolist()
-    all_tests = np.load(gard + f"{type}21-{method}-aic.npy").tolist()  #
-    calib_ind = np.argsort(calib_dream['prob'])[-20:]
-    vr = 'mds_Watertable depth Tinamit'
-    # sim_eq_obs = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\reverse\\t_sim_all\\all\\all_sim_eq_obs.npy"
-    d_trend = np.load(gard + f'{type}7-{method}-detrend.npy').tolist()
-    trend_multi = np.load(gard + f'{type}21-{method}-trend.npy').tolist()
-    trend_barlas = np.load(gard + f'{type}7-{method}-trend.npy').tolist()
-    # agreement = np.load(gard + f'rev_agreemt-fscabc-coeffienct of agreement.npy').tolist()
-    agreement = np.load(gard + f'agreemt-{method}-coeffienct of agreement.npy').tolist()
-    return all_tests, vr, calib_ind, trend_multi, trend_barlas, d_trend, agreement, calib_dream, gard
+def plot_save(p, name, save_plot):
+    handles, labels = plt.gca().get_legend_handles_labels()
+    handle_list, label_list = [], []
+    for handle, label in zip(handles, labels):
+        if label not in label_list:
+            handle_list.append(handle)
+            label_list.append(label)
+    plt.legend(handle_list, label_list)
+    plt.savefig(save_plot + f'{name}_{p}')
+    plt.close('all')
 
 
-def detect_21(calib_dream, all_tests, vr, obj_func, calib_ind, relate, threshold):
-    obj = {}
-    if obj_func == 'aic_21':
-        aic = {i: calib_dream['prob'][i] for i in calib_ind}
-    for p, vec in all_tests[vr][f'{obj_func}'].items():
-        if obj_func == 'aic_21':
-            if p not in obj:
-                obj[p] = []
-            # obj[p].extend([(key, value) for (key, value) in sorted(vec.items(), key=lambda x: x[1])][-threshold:])
-            obj[p].extend([(key, value) for (key, value) in
-                           sorted({n: v for n, v in vec.items() if n in [f'n{i}' for i in np.sort(calib_ind)]
-                                   and v - aic[int(n[1:])] > 2}.items(), key=lambda x: x[1])])
+def _label(xlabel, ylabel, title=None, fontsize=None):
+    plt.xlabel(xlabel, fontsize=fontsize)
+    plt.ylabel(ylabel, fontsize=fontsize)
 
-        else:
-            for n, v in vec.items():
-                if obj_func == 'kappa':
-                    if all(i == threshold for i in list(v.values())):
-                        if p not in obj:
-                            obj[p] = []
-                        obj[p].append(int(n[1:]))
-                elif relate(v, threshold):
-                    if p not in obj:
-                        obj[p] = []
-                    obj[p].append((n, v))
-    obj['n'] = []
-    if obj_func == 'kappa':
-        for i in np.asarray(list(set([n for p in obj for n in obj[p]]))):  # 69n, all=1
-            if i in calib_ind:
-                obj['n'].append(i)
-    else:
-        for i in [int(n[0][1:]) for p in obj for n in obj[p]]:
-            if i in calib_ind:
-                obj['n'].append(i)
-    obj['n'] = set(obj['n'])
-    if obj_func == 'aic_21':
-        return aic, obj
-    else:
-        return obj
+    if title is not None:
+        plt.title(title, fontsize=fontsize)
 
 
-def coa(vr, calib_ind, agreement):
-    kap = {}
-    icc1 = {}
-    kappa = agreement[vr]['kappa']
-    icc = agreement[vr]['icc']
-    for p in kappa:
-        for n, v in kappa[p].items():
-            if v['ka_slope'] == 1 and int(n[1:]) in calib_ind:
-                if p not in kap:
-                    kap[p] = []
-                kap[p].append(n)
-    kap['n'] = set([n for p in kap for n in kap[p]])
-    kap['slope'] = all(v['ka_slope'] for p in kappa if p != 'n' for n, v in kappa[p].items() if
-                       int(n[1:]) in calib_ind and v['ka_slope'] == 1)
-
-    for p in icc:
-        for n in icc[p]:
-            if icc[p][n] > 0.75 and int(n[1:]) in calib_ind:
-                if p not in icc1:
-                    icc1[p] = []
-                icc1[p].append(n)
-    icc1['n'] = set([n for p in icc1 for n in icc1[p]])
-    icc1['all>0'] = all(v for p in icc if p != 'n' for n, v in icc[p].items() if int(n[1:]) in calib_ind and v > 0.4)
-    return kap, icc1
+def plot_ci(x_data, y_data, var, save_plot):
+    plt.ioff()
+    plt.figure(figsize=(11, 4))
+    plt.plot(np.arange(0, 1.1, 0.1), np.arange(0, 1.1, 0.1), 'g-.', label="CI over Percentiles")
+    plt.plot(x_data, y_data, 'r.-', label=f"{var} CI")
+    plt.xticks(x_data, [f'{round(t, 2)}' for t in x_data], fontsize=5.5)
+    plt.yticks(np.arange(0, 1.1, 0.1), [f"{t}%" for t in np.arange(0, 101, 10)])
+    plot_save(var, 'ci', save_plot)
+    plt.close()
 
 
-def point_based(obj_fun, all_tests, top_n, calib_ind):
-    vr = 'mds_Watertable depth Tinamit'
-    obj = {'n': {}}
-    if obj_fun == 'RMSE':
-        for i in np.argsort(all_tests[vr][obj_fun])[top_n:]:
-            if i in calib_ind:
-                obj['n'].update({i: all_tests[vr][obj_fun][i]})
-    else:
-        for i in np.argsort(all_tests[vr][obj_fun])[-top_n:]:
-            if i in calib_ind:
-                obj['n'].update({i: all_tests[vr][obj_fun][i]})
-    return obj
+def _save_dist(ax, fig, d_data, save_plot, type_density, dpi=500):
+    if 'parameter' in type_density:
+        v = type_density['parameter']
+        if '-' in v:
+            v = v[:v.index("-") - 1]
+
+        val = [d_prm[v] for m, d_prm in d_data.items()][0]
+
+    elif 'obj_func' in type_density:
+        v = type_density['obj_func']
+
+        val = [d for m, d in d_data.items()][0]
+
+    ax.set_xlabel(f'{v} density')
+
+    ax.set_xlim(np.nanmin(val), np.nanmax(val))
+
+    ax.set_title(f'Shaded density plot of {v}')
+    fig.savefig(save_plot, f'{v}.png', dpi=dpi)
+    plt.close(fig)
 
 
-def barlas(path, calib_ind, key=False, trend=False, vr=False, plot=False):
-    out = np.load(path).tolist()
-    if trend:
-        n = [n for n in out[key] if int(n[1:]) in calib_ind]
-        p = set(p for n1 in n for p in out[key][n1])
-        pout = out[key]
-    elif key == 'corr_sim':
-        p = list(set(p for p in out[key] for n in out[key][p] if int(n[1:]) in calib_ind))  # 9
-        n = set(n for p in out[key] for n in out[key][p] if int(n[1:]) in calib_ind)  # 63
-        pout = out[key]
-    elif key == 'multi_behavior_tests':
-        n = set(n for p in out[vr][key] for n in out[vr][key][p] if n[-1] != '|' and int(n[1:]) in calib_ind)  # 10
-        p = list(set(p for p in out[vr][key] for n in out[vr][key][p] if n[-1] != '|' and int(n[1:]) in calib_ind))
-        pout = out[vr][key]
-    else:
-        n = set(n for p in out for n in out[p] if n[-1] != '|' and int(n[1:]) in calib_ind)  # 10
-        p = list(set(p for p in out for n in out[p] if n[-1] != '|' and int(n[1:]) in calib_ind))
-        pout = out
-    if plot:
-        p_n = [(pp, int(nn[1:])) for pp in pout for nn in list(n) if nn in pout[pp]]
-        return p_n
-    else:
-        return n, p
+def _set_ax_marker(ax, xlabel, ylabel, title, xlim=None, ylim=None):
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    if xlim is not None:
+        ax.set_xlim(xlim[0], xlim[1])
+    elif ylim is not None:
+        ax.set_ylim(ylim[0], ylim[1])
+
+    ax.set_title(title)
 
 
-# sub_4_plot = [only_b, only_aic, both_b_aic, only_k, both_b_k, both_aic_k, all]
-def plot_venn(top_val, save_path, set_labels=('Multi-step tests', 'AIC', 'KAPPA')):
-    # top_val = [11, 51, 4, 47, 25, 4, 1]
-    loc = ('100', '010', '110', '001', '101', '011', '111')
-    new_sub = {}
-    for i, val in enumerate(loc):
-        new_sub[val] = top_val[i]
+def plot_top_sim_obs(sim_norm, obs_norm, npoly, pcentl, save_plot, proc_sim, ci=False):
+    for j, p in enumerate(npoly):
+        plt.ioff()
+        plt.figure(figsize=(15, 5))
+        plt.plot(obs_norm[:, j], 'r-', label=f'obs_{p}', linewidth=4) #obs:t, p
+        for i in range(len(sim_norm)):
+            plt.plot(sim_norm[i, :, j], 'b--', linewidth=0.2)
+        percentile = np.divide(np.arange(1, obs_norm.shape[0] + 1), obs_norm.shape[0])
+        plt.xticks(range(len(percentile)), [f"{i}\n{round(t * 100, 1)}%" for i, t in enumerate(pcentl[:, j])],
+                   fontsize=5)
+        for xc in range(len(percentile)):
+            plt.axvline(x=xc, linewidth=0.2, linestyle=':')
+        _label("Season\nConfidential Interval", "Water Table Depth", 8)
+        plot_save(p, 't_ci', save_plot)
 
-    pyplot.ioff()
-    v = venn3(subsets=new_sub, set_labels=set_labels)
-    # v.get_label_by_id(loc[0]).set_text('best is n123')
-    # v.get_label_by_id(loc[1]).set_text('best is n564')
-    # v.get_label_by_id(loc[2]).set_text(f'overlapped 5')
-    # # v.get_label_by_id(loc[3]).set_text(' ')
-    # v.get_label_by_id(loc[4]).set_text('overlapped 25 simulations')
-    # v.get_label_by_id(loc[5]).set_text('overlapped 5(include n564)')
-    # v.get_label_by_id(loc[6]).set_text('478')
-    pyplot.annotate('69 simulations are equally the best',
-                    xy=v.get_label_by_id(loc[3]).get_position() - np.array([0, 0.05]),
-                    ha='center', xytext=(0.1, 0.0001), textcoords='axes fraction',
-                    bbox=dict(boxstyle='round,pad=0.5', fc='gray', alpha=0.1),
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.3', color='gray'))
+        if ci:
+            plot_ci(percentile, np.sort(pcentl[:, j]), f'Poly-{p}', save_plot)
 
-    pyplot.annotate('485-th run', xy=v.get_label_by_id(loc[6]).get_position() - np.array([0, 0.05]),
-                    ha='center', xytext=(0.8, 0.2), textcoords='axes fraction',
-                    bbox=dict(boxstyle='round,pad=0.5', fc='gray', alpha=0.1),
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.3', color='gray'))
-
-    pyplot.annotate('485-th run', xy=v.get_label_by_id(loc[6]).get_position() - np.array([0, 0.05]),
-                    ha='center', xytext=(0.8, 0.2), textcoords='axes fraction',
-                    bbox=dict(boxstyle='round,pad=0.5', fc='gray', alpha=0.1),
-                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.3', color='gray'))
-
-    pyplot.savefig(save_path)
+        proc_sim = {n: val[:, j] for n, val in proc_sim.items()}
+        param_uncertainty_bounds(sim_norm[:, :, j], obs_norm[:, j], p, proc_sim, save_plot)
 
 
-def plot_top_sim(obj_func, trend_multi, trend_barlas, save_plot, calib_ind, all_tests, gard, type, method, calib_dream):
-    vr = 'mds_Watertable depth Tinamit'
-    if obj_func == 'multi_behavior_tests':
-        p_n = barlas(gard + f'{type}7-{method}-phase.npy', calib_ind, plot=True)
-        obj_func = 'Muti-behaviour tests'
-        trend = trend_barlas
-    elif obj_func == 'AIC':
-        AIC = point_based('AIC', all_tests, 20)
-        p_n = [(p, n) for n in AIC['n'] for p in trend_multi['t_sim'][f'n{n}']]
-        trend = trend_multi
-    else:
-        p_n = []
-        if obj_func == 'aic_21':
-            aic, obj_21 = detect_21(calib_dream, all_tests, vr, 'aic_21', calib_ind, operator.gt, 5)
-        elif obj_func == 'kappa':
-            obj_21 = detect_21(all_tests, vr, 'kappa', calib_ind, operator.eq, 1)
-            p_n = [(p, n) for p in obj_21 if not isinstance(p, str) for n in obj_21['n'] if n in obj_21[p]]
-        elif obj_func == 'rmse_21':
-            obj_21 = detect_21(all_tests, vr, 'rmse_21', calib_ind, operator.lt, 0.4)
-        elif obj_func == 'nse_21':
-            obj_21 = detect_21(all_tests, vr, 'nse_21', calib_ind, operator.gt, 0.7)
-        if not len(p_n):
-            p_n = [(p, n) for p in obj_21 if not isinstance(p, str) for n in list(obj_21['n']) if
-                   f'n{n}' in [i[0] for i in obj_21[p]]]
-        obj_func = obj_func[:3]
-        trend = trend_multi
-    mismatch_sim = {obj_func: []}
-    for pn in p_n:
-        obs_yred = trend['t_obs'][pn[0]]['y_pred']
-        if f'n{pn[1]}' in trend['t_sim']:
-            sim_yred = trend['t_sim'][f'n{pn[1]}'][pn[0]]['y_pred']
-        else:
-            mismatch_sim[obj_func].append(pn)
-        pyplot.ioff()
-        pyplot.plot(obs_yred, 'g--', label=f"obs_poly{pn[0]}")
-        pyplot.plot(sim_yred, 'r-.', label=f"sim_{pn[1]}")
+def path_4_plot(res_path, save_plot, plot_type, mtd, obj_func, p_m=None, poly_type='rev'):
+    '''
 
-        pyplot.legend()
-        pyplot.title(f'{obj_func}-poly{pn[0]}-sim{pn[1]} Vs Obs{pn[0]}')
-        pyplot.savefig(save_plot + f'{obj_func}_poly{pn[0]}_sim{pn[1]}')
-        pyplot.close('all')
-    return mismatch_sim
-
-
-def prep_cluster_dt(obj_func, vr, sim_eq_obs):
-    obj = sim_eq_obs[vr][obj_func]
-    cluster = np.empty([len(obj), len(list(obj.values())[0])])
-    for p in obj:
-        if obj_func == 'kappa':
-            cluster[list(obj).index(p), :] = np.asarray([list(v.values())[0] for v in list(obj[p].values())])
-        else:
-            cluster[list(obj).index(p), :] = np.asarray(list(obj[p].values()))
-    return cluster
-
-
-def path_4_plot(plot_type, mtd, obj_func, p_m=None):
+    :param res_path:
+    :param save_plot:
+    :param plot_type:
+    :param mtd:
+    :param obj_func:
+    :param p_m:
+    :param poly_type: calib=19poly='rev'; valid=18poly='ori'
+    :return:
+    '''
     vr = 'mds_Watertable depth Tinamit'
 
-    save_plot = "D:\Gaby\Tinamit\Dt\Calib\plot\\"
-    res_path = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\"
-
-    obs_param = np.load(res_path + 'obss.npy').tolist()
+    if os.name == 'posix':
+        obs_param = np.load(res_path + 'obs_prm.npy').tolist()
+    else:
+        obs_param = np.load(res_path + 'obss.npy').tolist()
 
     c_obs_dt = ori_calib[1]
     v_obs_dt = ori_valid[1]
@@ -245,10 +125,10 @@ def path_4_plot(plot_type, mtd, obj_func, p_m=None):
         for m in mtd:
             calib_res[m] = np.load(res_path + f'{m}\\{m}_{obj_func}.npy').tolist()
 
-        if 'rev' in obj_func:
-            poly = np.asarray(list(v_obs_dt))
+        if poly_type == 'rev':
+            poly = np.asarray(list(v_obs_dt)) #19
         else:
-            poly = np.asarray(list(c_obs_dt))
+            poly = np.asarray(list(c_obs_dt)) #18
 
         return poly, calib_res, obj_func, obs_param, save_plot + plot_type + f'\\{obj_func}'
 
@@ -262,46 +142,71 @@ def path_4_plot(plot_type, mtd, obj_func, p_m=None):
                 prob[m] = np.load(res_path + f'{m}\\valid_{obj_func}_multidim.npy').tolist()[vr][
                     obj_func[:obj_func.index('_')] if '_' in obj_func else obj_func]
 
-        if 'rev' in obj_func:
-            poly = np.asarray(list(c_obs_dt))
-        else:
+        if poly_type == 'rev':
             poly = np.asarray(list(v_obs_dt))
+        else:
+            poly = np.asarray(list(c_obs_dt))
 
         return poly, prob, obj_func, obs_param, save_plot + f'valid\\{obj_func}'
 
 
-def combine_calib_res(res, method, obj_func=None):
+def combine_calib_res(res, method, obj_func, prob_type='top'):
     '''
     :param res: [res1, res2]
     :param method: ['abc', 'mle']
     :return:
     '''
-    for pm in ['POH Kharif Tinamit', 'POH rabi Tinamit', 'Capacity per tubewell']:
+    if 'chains' in res[method[0]]:
+        for pm in ['POH Kharif Tinamit', 'POH rabi Tinamit', 'Capacity per tubewell']:
+            for m in method:
+                if 'sampled_prm' in res[m]:
+                    res[m]['sampled_prm'][pm] = np.asarray([j.tolist() for j in res[m]['sampled_prm'][pm]])
+                res[m][pm] = np.asarray([j.tolist() for j in res[m][pm]])
+
         for m in method:
-            if 'sampled_prm' in res[m]:
-                res[m]['sampled_prm'][pm] = np.asarray([j.tolist() for j in res[m]['sampled_prm'][pm]])
-            res[m][pm] = np.asarray([j.tolist() for j in res[m][pm]])
-    for m in method:
-        res[m].update({p: np.asarray(res[m][p]) for p, v in res[m].items() if isinstance(v, list)})
+            res[m].update({p: np.asarray(res[m][p]) for p, v in res[m].items() if isinstance(v, list)})
 
-    d_param = {m: {} for m in method}
+        d_param = {m: {} for m in method}
 
-    for m in method:
-        d_param[m] = {p: v for p, v in res[m].items() if len(v) == len(res[m]['buenas']) and p != 'buenas'}
+        for m in method:
+            d_param[m] = res[m]['parameters']
 
-    if 'aic' in obj_func:
-        prob = {m: np.negative(np.take(res[m]['prob'], res[m]['buenas'])) for m in method}
+        if prob_type == 'top':
+            if 'aic' in obj_func:
+                prob = {m: np.negative(np.take(res[m]['prob'], res[m]['buenas'])) for m in method}
+            else:
+                prob = {m: np.take(res[m]['prob'], res[m]['buenas']) for m in method}
+
+        elif prob_type == 'all':
+            if 'aic' in obj_func:
+                prob = {m: np.negative(res[m]['prob']) for m in method}
+            else:
+                prob = {m: res[m]['prob'] for m in method}
+        return d_param, prob
+
     else:
-        prob = {m: np.take(res[m]['prob'], res[m]['buenas']) for m in method}
-    return d_param, prob
+        valid = {m:{} for m in method}
+        for m in res:
+            valid[m]['prob_sim']  = res[m]['pro_sim']
+            if 'patrón' in valid[m]:
+                valid[m]['patrón']  = res[m]['patrón']
+        return valid
 
-def clr_marker(color=False, marker=False):
-    if color:
+
+def clr_marker(mtd_clr=False, mtd_mkr=False, obj_fc_clr=False, obj_fc_mkr=False, wt_mu_m=False):
+    if mtd_clr:
         return {'fscabc': 'b', 'dream': 'orange', 'mle': 'r', 'demcz': 'g'}
-    elif marker:
-        return ['o', 'v', "x", "*"]
+    elif mtd_mkr:
+        return {'fscabc':'o', 'dream':'v', 'mle':'x', 'demcz':'*'}
+    elif obj_fc_clr:
+        return {'aic': 'b', 'nse': 'orange', 'rmse': 'g'}
+    elif obj_fc_mkr:
+        return {'aic': 'o', 'nse': 'v', 'rmse': 'x'}
+    elif wt_mu_m:
+        return  {'weighted_sim' : 'orange', 'mean_sim': 'b', 'median_sim': 'g'}
 
-def plot_prm_prb(obj_func, mtd):
+
+def plot_prm_prb(obj_func, mtd, res_path, save_plot):
     '''
 
     :param obj_func: if _rev in obj_func then poly needs to be v_poly
@@ -310,12 +215,11 @@ def plot_prm_prb(obj_func, mtd):
     :return:
     '''
 
-    poly, calib_res, obj_func, obs_param, save_plot = path_4_plot('prm_prb', mtd, obj_func)
+    poly, calib_res, obj_func, obs_param, save_plot = path_4_plot(res_path, save_plot, 'prm_prb', mtd, obj_func, poly_type='rev')
 
     d_param, prob = combine_calib_res(calib_res, mtd, obj_func)
 
     s_cnl_msk = _soil_canal(poly)
-    prb = [i for m, l in prob.items() for i in l]
 
     x = [i + 1 for i in range(len(s_cnl_msk))]
     xlabels = [i[0] + i[i.index(',') + 2] for i in s_cnl_msk]
@@ -333,11 +237,11 @@ def plot_prm_prb(obj_func, mtd):
             # _plot_poly(p, '', save_plot)
 
             for i, m in enumerate(prob):
-                plt.plot(i+1, mds_dist[m], marker='o', color=f'{clr_marker(color=True)[m]}', label=m.upper())
+                plt.plot(i + 1, mds_dist[m], marker='o', color=f'{clr_marker(mtd_clr=True)[m]}', label=m.upper())
             plt.xticks([i+1 for i in range(len(prob))], [i for i in prob], rotation=70, fontsize=6)
             _label('Calibration approaches', f"Distance of the mean value of calibrating {p[:p.index('-')] if '-' in p else p} to the previous optimum value",
                    f"Differences of mean {p[:p.index('_')] if '_' in p else p} to the optimum to calibration approaches", fontsize=6)
-            _plot_poly(p, '_mds_dist', save_plot)
+            plot_save(p, '_mds_dist', save_plot)
 
         elif p != 'opt':
             bf_dist = {m: [[] for j in range(len(s_cnl_msk))] for i, m in enumerate(prob)}
@@ -364,8 +268,8 @@ def plot_prm_prb(obj_func, mtd):
             for i, m in enumerate(prob):
                 for xe, ye in zip(x, bf_dist[m]):
                     plt.ioff()
-                    a.append(plt.scatter([xe] * len(ye), ye, alpha=0.3, marker=f'{list(clr_marker(marker=True))[i]}',
-                                label=y, color=f'{clr_marker(color=True)[m]}'))
+                    a.append(plt.scatter([xe] * len(ye), ye, alpha=0.3, marker=f'{list(clr_marker(mtd_mkr=True))[i]}',
+                                         label=y, color=f'{clr_marker(mtd_clr=True)[m]}'))
 
             plt.xticks(x, xlabels, rotation=70, fontsize=10)
             _label('Soil Class & Canal Position', f"Distance of the mean calibrated{p[:p.index('-')] if '-' in p else p} "
@@ -374,13 +278,16 @@ def plot_prm_prb(obj_func, mtd):
             ind = np.searchsorted([i for i, m1 in enumerate(prob) for m in [p.get_label() for p in a] if m1 == m],
                                   [i for i in range(len(labl))], side='right')
             plt.legend([a[i - 1] for i in ind], labl)
-            _plot_poly(p, '_bf_dist', save_plot)
+            plot_save(p, '_bf_dist', save_plot)
 
 
-def prb_cls(obj_func, mtd, p_m):
-    poly, prob, obj_func, obs_param, save_plot = path_4_plot('valid', mtd, obj_func, p_m)
+def prb_cls(obj_func, mtd, p_m, res_path, save_plot):
+
+    poly, prob, obj_func, obs_param, save_plot = path_4_plot(res_path, save_plot, 'valid', mtd, obj_func, p_m,
+                                                             poly_type='ori')
+
     s_cnl_msk = _soil_canal(poly)
-    objfc = [obj_func[:obj_func.index('_')].upper() if '_' in obj_func else obj_func.upper()]
+    objfc = [obj_func[:obj_func.index('_')-1].upper() if '_' in obj_func else obj_func.upper()]
 
     x = [i + 1 for i in range(len(s_cnl_msk))]
 
@@ -401,27 +308,268 @@ def prb_cls(obj_func, mtd, p_m):
         for xe, ye in zip(x, m_y[y]):
             plt.ioff()
             a.append(
-                plt.scatter([xe] * len(ye), ye, alpha=0.3, marker=f'{list(clr_marker(marker=True))[i]}', label=y,
-                            color=f'{clr_marker(color=True)[y]}'))
+                plt.scatter([xe] * len(ye), ye, alpha=0.3, marker=f'{list(clr_marker(mtd_mkr=True))[i]}', label=y,
+                            color=f'{clr_marker(mtd_clr=True)[y]}'))
 
     _plot()
     labl = [m.upper() for m in prob]
     ind = np.searchsorted([i for i, m1 in enumerate(prob) for m in [p.get_label() for p in a] if m1 == m],
                           [i for i in range(len(labl))], side='right')
     plt.legend([a[i - 1] for i in ind], labl)
-    _plot_poly('valid', f'', save_plot)
+    plot_save('valid', f'', save_plot)
 
     for i, m in enumerate(mtd):
-        plt.plot(x, [np.mean(np.asarray(v)) for v in m_y[m]], label=m.upper(), color=f'{clr_marker(color=True)[m]}',
-                 marker=f'{list(clr_marker(marker=True))[i]}', linestyle='dashed')
+        plt.plot(x, [np.mean(np.asarray(v)) for v in m_y[m]], label=m.upper(), color=f'{clr_marker(mtd_clr=True)[m]}',
+                 marker=f'{list(clr_marker(mtd_mkr=True))[i]}', linestyle='dashed')
     _plot()
-    _plot_poly('valid', f'_mean', save_plot)
+    plot_save('valid', f'_mean', save_plot)
 
     for i, m in enumerate(mtd):
-        plt.plot(x, [np.nanmedian(np.asarray(v)) for v in m_y[m]], label=m.upper(), color=f'{clr_marker(color=True)[m]}',
-                 marker=f'{list(clr_marker(marker=True))[i]}', linestyle='dashed')
+        plt.plot(x, [np.nanmedian(np.asarray(v)) for v in m_y[m]], label=m.upper(), color=f'{clr_marker(mtd_clr=True)[m]}', marker= f'{clr_marker(mtd_mkr=True)[m]}', linestyle= 'dashed')
     _plot()
-    _plot_poly('valid', f'_median', save_plot)
+    plot_save('valid', f'_median', save_plot)
+
+
+def param_uncertainty_bounds(sim_res, observations, poly, proc_sim, save_plot):
+    fig= plt.figure(figsize=(16,9))
+    ax = plt.subplot(1,1,1)
+    q5,q25,q75,q95=[],[],[],[]
+    for t in range(len(observations)):
+        q5.append(np.percentile(sim_res[:, t],2.5))
+        q95.append(np.percentile(sim_res[:, t],97.5))
+    ax.plot(q5,color='dimgrey',linestyle='solid', label='5-th percentile')
+    ax.plot(q95,color='dimgrey',linestyle='solid', label='95-th percentile')
+    ax.fill_between(np.arange(0,len(q5),1),list(q5),list(q95),facecolor='dimgrey',zorder=0,
+                    linewidth=0,label='Parameter uncertainty')
+    ax.plot(observations,'r.',label='Obs')
+    for n, array in proc_sim.items():
+        ax.plot(array,color=f'{clr_marker(wt_mu_m=True)[n]}',label=f'{n}', linestyle='dashed')
+    ax.legend()
+    fig.savefig(save_plot, f'{poly}.png',dpi=500)
+    plt.close(fig)
+
+
+def param_distribution(res_path, save_plot, methods):
+    '''
+    15 parameters distribution based on the diff chain & 9 parameters distribution over validation polygons
+    :param res_path:
+    :param save_plot:
+    :param methods:
+    :return:
+    '''
+
+    líms_paráms_final = gen_problema(líms_paráms=calib_líms_paráms, mapa_paráms=calib_mapa_paráms, ficticia=False)[1]
+
+    poly, calib_res, obj_func, obs_param, save_plot = path_4_plot(res_path, save_plot, 'prm_prb', methods, 'aic_rev', poly_type='ori')
+
+    fig = plt.figure(figsize=(16*3, 16))
+
+    for m in methods:
+        for par, val in calib_res[m]['sampled_prm'].items():
+            ind = list(calib_res[m]['sampled_prm'].keys()).index(par)
+
+            plt.subplot(len(calib_res[m]['sampled_prm']), 2, 2 * ind - 1)
+
+            for i in range(int(max(calib_res[m]['chains']))):
+                index = np.where(calib_res[m]['chains'] == i)
+                plt.plot(val[index], '.')
+            plt.ylabel(par)
+            plt.ylim(líms_paráms_final[par][0], líms_paráms_final[par][1])
+
+            plt.subplot(len(líms_paráms_final), 2, 2 * ind + 2)
+            normed_value = 1
+            hist, bins = np.histogram(val, bins=40, density=True)
+            widths = np.diff(bins)
+            hist *= normed_value
+            plt.bar(bins[:-1], hist, widths)
+
+            plt.axvline(np.nanmean(val), label='Mean', linestyles="dashed")
+            plt.axvline(np.nanmedian(val), label='Median', linestyles="dashed")
+
+            plt.ylabel(par)
+            plt.xlim(líms_paráms_final[par][0], líms_paráms_final[par][1])
+
+            if ind + 1 == (ind + 1) * 2:
+                plt.xlabel('Parameter range')
+
+        fig.savefig(save_plot, f'{m}_param_dist.png', dpi=500)
+        plt.close(fig)
+
+
+    d_param = combine_calib_res(calib_res, methods, obj_func, prob_type='all')[0]
+
+    for prm in list(d_param.values())[0]:
+        if len(prm.shape) == 2:
+            fig, ax = plt.subplots(len(poly), figsize=(4, len(poly)*2))
+            for i, p in enumerate(poly):
+                for m in methods:
+                    val = calib_res[m]['parameters'][prm][p - 1]
+                    sns.distplot(val, hist=False, kde=True,
+                                 color=clr_marker(mtd_clr=True)[m], ax=ax[i], label=f'{m}')
+                    ax[i].axvline(np.nanmean(val), label='Mean', linestyles="dashed")
+                    ax[i].axvline(np.nanmedian(val), label='Median', linestyles="dashed")
+
+                ax.set_ylabel('Probability density')
+            _save_dist(ax, fig, d_param, save_plot, type_density={'parameter':prm}, dpi=500)
+
+        else:
+            fig, ax = plt.subplots(3, figsize=(4, 3*2))
+            i=0
+            for m in methods:
+                val = calib_res[m]['parameters'][prm]
+                sns.distplot(val, hist=False, kde=True,
+                             color=clr_marker(mtd_clr=True)[m], ax=ax[i], label=f'{m}')
+                ax[i].axvline(np.nanmean(val), label='Mean', linestyles="dashed")
+                ax[i].axvline(np.nanmedian(val), label='Median', linestyles="dashed")
+
+            _save_dist(ax, fig, d_param, save_plot, type_density={'parameter':prm}, dpi=500)
+            i += 1
+
+
+def likes_distribution(res_path, methods, save_plot):
+    '''
+    likes distribution of calibration results
+    :param res_path:
+    :param methods:
+    :param save_plot:
+    :return:
+    '''
+    poly, calib_res, obj_func, obs_param, save_plot = path_4_plot(res_path, save_plot, 'prm_prb', methods, 'aic_rev', poly_type='ori')
+
+    d_likes = combine_calib_res(calib_res, methods, obj_func, prob_type='all')[1]
+
+    fig, ax = plt.subplots(figsize=(4, 2))
+
+    for m in d_likes:
+        val = d_likes[m]
+        sns.distplot(val, hist=False, kde=True, color=clr_marker(mtd_clr=True)[m], ax=ax, label=f'{m}')
+        ax.axvline(np.nanmean(val), label='Mean', linestyles="dashed")
+        ax.axvline(np.nanmedian(val), label='Median', linestyles="dashed")
+
+    _save_dist(ax, fig, d_likes, save_plot,
+               type_density={'obj_func': obj_func[:obj_func.index('_') - 1] if 'rev' in obj_func else obj_func},
+               dpi=500)
+
+
+def compare_vsim_to_vobs(methods, res_path, save_plot):
+
+    poly, valid_res, obj_func, obs_param, save_plot = path_4_plot(res_path, save_plot, 'valid', methods, 'aic_rev', poly_type='ori')
+
+    valid = combine_calib_res(valid_res, methods, 'aic_rev')
+
+    sim_type = ['weighted_sim', 'mean_sim', 'median_sim']
+
+    for i, p in enumerate(poly):
+        plt.ioff()
+        fig, axs = plt.subplots(1, 3, figsize=(4*3, 2))
+        for t_sim in sim_type:
+            axs[sim_type.index(t_sim)].plot(valid[methods[0]]['prob_sim']['obs_norm'][:, i], label='Observation')
+            for m, d_data in valid.items():
+                axs[sim_type.index(t_sim)].plot(valid[m]['prob_sim'][t_sim][:, i], color=clr_marker(mtd_clr=True)[m],
+                                                label=f'{m}')
+
+            _set_ax_marker(axs[sim_type.index(t_sim)], 'Time\nSeason', 'Water table depth', f'{t_sim.capitalize()}',
+                           xlim=False, ylim=False)
+
+        fig.suptitle(f'Polygon {p}')
+        fig.savefig(save_plot, f'Polygon {p}.png', dpi=500)
+        plt.close(fig)
+
+
+def boxplot_like_loc(methods, res_path, save_plot):
+
+    poly, valid_res, obj_func, obs_param, save_plot = path_4_plot(res_path, save_plot, 'valid', methods, 'aic_rev',
+                                                                  poly_type='ori')
+    valid = combine_calib_res(valid_res, methods, 'aic_rev')
+
+    calib_res = path_4_plot(res_path, save_plot, 'prm_prb', methods, 'aic_rev', poly_type='ori')[1]
+    prob = combine_calib_res(calib_res, methods, 'aic_rev')[1]
+
+    s_cnl_msk = _soil_canal(poly)
+
+    sl_cl = {m: [valid[m]['patrón']['all_sim'][:, p] for i, p in enumerate(poly)] for m in methods}
+
+    xlim = [0, 18]
+    a = np.linspace(xlim[0] + 0.5, xlim[1] + 0.5, len(poly), endpoint=False)
+    b = [np.arange(i, i + 0.5 * len(l_p), 0.5) for i in a for j, l_p in s_cnl_msk.items()]
+    c = [j for i in b for j in i]
+
+    xlabels = [i[0] + i[i.index(',') + 2] for i in s_cnl_msk]
+
+    for m in methods:
+        data = sl_cl[m]
+        fig, ax1 = plt.subplots(figsize=(10, 6))
+        fig.canvas.set_window_title(f'{m} Boxplot')
+        fig.subplots_adjust(left=0.075, right=0.95, top=0.9, bottom=0.25)
+
+        ylim = [np.nanmin(valid[m]['patrón']['all_sim']), np.nanmax(valid[m]['patrón']['all_sim'])]
+
+        bp = ax1.boxplot(data, notch=0, sym='.', positions=np.asarray(c), whis=[5, 95])
+
+        # Add a horizontal grid to the plot
+        ax1.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.5)
+        ax1.set_axisbelow(True)
+        _set_ax_marker(ax1, 'Canal position', 'AIC',
+                       f' {m.capitalize()} comparison of AIC Across All Validation Canal Positions')
+
+        #fill the boxes with desired colors
+        box_colors = ['#F5B7B1','#00BCD4', '#FFE082', '#A5D6A7', '#B39DDB', '#F48FB1', '#F48FB1', '#039BE5', '#3949AB']
+        rbg = [mcolors.to_rgba(c) for c in box_colors]
+        num_boxes = len(data)
+        medians = np.empty(num_boxes)
+
+        color = [rbg[i_clr] for i_clr, j in enumerate(b) for v in c if v in j]
+
+        for i, v in enumerate(c):
+            box = bp['boxes'][i]
+            boxX = []
+            boxY = []
+            for j in range(5):
+                boxX.append(box.get_xdata()[j])
+                boxY.append(box.get_ydata()[j])
+
+            box_coords = np.column_stack([boxX, boxY])
+            ax1.add_patch(Polygon(box_coords, facecolor=color[i]))
+
+            # Now draw the median lines back over what we just filled in
+            med = bp['medians'][i]
+            medianX = []
+            medianY = []
+            for j in range(2):
+                medianX.append(med.get_xdata()[j])
+                medianY.append(med.get_ydata()[j])
+                ax1.plot(medianX, medianY, 'k')
+            medians[i] = medianY[0]
+
+            # add mean
+            ax1.plot(np.average(med.get_xdata()), np.average(data[i]), color='w', marker='*')
+
+
+        for tick, label in zip(range(num_boxes), ax1.get_xticks()):
+            ax1.text(label, .95, poly[tick], transform=ax1.get_xaxis_transform(),
+                     horizontalalignment='center', size='x-small', color=color[tick])
+
+        ax1.axvline(np.nanmax(prob[m]), label='Optimum calibrated value', linestyles="dashed", color='r')
+        # Set the axes ranges and axes labels
+        ax1.set_xlim(xlim[0], xlim[1])
+        ax1.set_ylim(ylim[0], ylim[1])
+
+        ax1.set_xticks([np.average(i) for i in b])
+        ax1.set_xticklabels(xlabels, rotation=45, fontsize=8)
+
+        # add a basic legend
+        pos = [i for i in np.flip(np.arange(0.01, 0.6, 0.03))][:len(xlabels)]
+        for i, v in enumerate(xlabels):
+            fig.text(0.9, pos[i], f'{v}',
+                     backgroundcolor=rbg[i], color='white', weight='roman', size='x-small')
+
+        fig.text(0.90, 0.015, '*', color='white', backgroundcolor='black', weight='roman', size='large')
+        fig.text(0.915, 0.013, ' Average Value', color='black', weight='roman', size='x-small')
+        fig.text(0.90, 0.012, '---', color='r', weight='roman', size='large')
+        fig.text(0.915, 0.010, 'Calibrated value', color='black', weight='roman', size='x-small')
+
+        fig.savefig(save_plot, f'Boxplot {m}.png', dpi=500)
+        plt.close(fig)
 
 
 aic_mtd = ['fscabc', 'mle', 'dream']
@@ -429,8 +577,17 @@ aic_rev_mtd = ['fscabc', 'dream', 'demcz', 'mle']
 
 nse_rev_mtd = ['fscabc', 'dream']
 
+if os.name == 'posix':
+    res_path, save_plot = '/Users/gabriellapeng/Downloads/', '/Users/gabriellapeng/Downloads/'
+    spotpy_csv = '/Users/gabriellapeng/Downloads/calib/fscabc_aic_rev'
+
+else:
+    res_path, save_plot = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\", "D:\Gaby\Tinamit\Dt\Calib\plot\\"
+
 obj_func = 'nse'
 p_m = 'multidim'  # multidim, patrón
 
-# plot_prm_prb(obj_func, mtd=['fscabc'])
-prb_cls(obj_func, aic_mtd, p_m) # if obj_fc == aic--> v_poly// rev==c_poly
+# plot_prm_prb(obj_func, ['fscabc'], res_path, save_plot)
+# prb_cls(obj_func, aic_mtd, p_m, res_path, save_plot) # if obj_fc == aic--> v_poly// rev==c_poly
+
+

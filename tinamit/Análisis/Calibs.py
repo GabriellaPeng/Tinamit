@@ -563,9 +563,6 @@ class CalibradorMod(object):
             obs = obs.obt_datos(vars_obs, tipo='datos')[vars_obs]
             t_final = len(obs['n']) - 1
 
-        if tipo_proc is not None:
-            par_spotpy = {k: str(i) for i, (k, v) in enumerate(final_líms_paráms.items())}
-
         if not egr_spotpy:
             if método in _algs_spotpy:
                 temp = tempfile.NamedTemporaryFile('w', encoding='UTF-8', prefix='CalibTinamït_')
@@ -607,50 +604,39 @@ class CalibradorMod(object):
         cols_prm = [c for c in egr_spotpy.obt_nombres_cols() if c.startswith('par')]
         trzs = egr_spotpy.obt_datos(cols_prm)
         probs = egr_spotpy.obt_datos('like1')['like1']
+        chains = egr_spotpy.obt_datos('chain')['chain']
 
         # if os.path.isfile(temp.name + '.csv'):
         #     os.remove(temp.name + '.csv')
+        buenas = (probs >= np.min(np.sort(probs)[int(len(probs) * 0.8):]))
 
-        if isinstance(trzs, dict):
-            buenas = (probs >= np.min(np.sort(probs)[int(len(probs) * 0.8):]))
-            trzs = {p: trzs[p][buenas] for p in cols_prm}
-            prob = probs[buenas]  # like values
-        else:
+        if tipo_proc is None:
             trzs = trzs[-n_iter:]
             prob = probs[-n_iter:]
 
-        pesos = (prob - np.nanmin(probs)) / np.ptp(probs)  # those > 0.8 like, weight distribution
+            pesos = (prob - np.nanmin(probs)) / np.ptp(probs)  # those > 0.8 like, weight distribution
 
-        if tipo_proc is None:
-            res = {'buenas': np.where(buenas)[0], 'peso': pesos, 'máx_prob': np.nanmax(probs), 'prob': probs}
+            res = {'buenas': np.where(buenas)[0], 'peso': pesos, 'máx_prob': np.nanmax(probs), 'prob': prob}
+
             for i, p in enumerate(paráms):
                 col_p = 'par' + str(i)
                 res[p] = {'dist': trzs[col_p], 'val': _calc_máx_trz(trzs[col_p])}
-            # calculate the maxi distribution of the simulation results, and the weights
         else:
-            res = {'buenas': np.where(buenas)[0], 'prob': probs, 'sampled_prm': {prm: trzs[f'par{par_spotpy[prm]}'] for prm in par_spotpy}}
+
+            par_spotpy = {k: str(i) for i, (k, v) in enumerate(final_líms_paráms.items())}
+
+            res = {'buenas': np.where(buenas)[0], 'prob': probs, 'chains': chains,
+                   'sampled_prm': {prm: trzs[f'par{par_spotpy[prm]}'] for prm in par_spotpy}, 'parameters': { }}
 
             for i in range(len(list(trzs.values())[0])):
                 x = np.asarray([val[i] for val in list(trzs.values())])
                 val_inic = gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms)
                 for k, val in val_inic.items():
                     if k in res:
-                        res[k].append(val)
+                        res['parameters'][k].append(val)
                     else:
-                        res[k] = [val]
-            # for k, v in res.items():
-            #     if k in líms_paráms:
-            #         if isinstance(líms_paráms[k], tuple):
-            #             res[k]['val'].append(_calc_máx_trz(trzs['par' + par_spotpy[k]]))
-            #         elif isinstance(líms_paráms[k], list):
-            #             res[k]['val'].extend(
-            #                 [_calc_máx_trz(trzs['par' + par_spotpy[f'{k}_{str(i)}']]) for i in
-            #                  range(len(líms_paráms[k]))])
-            #     elif isinstance(v, dict):
-            #         for p, mapa in mapa_paráms.items():
-            #             if isinstance(mapa, dict):
-            #                 res[k]['val'].extend(_calc_máx_trz(trzs['par' + par_spotpy[f'{p}_{str(i)}']]) for i in
-            #                                      range(len(líms_paráms[p])))
+                        res['parameters'][k] = [val]
+
         if guardar:
             np.save(guardar, res)
 
@@ -1066,7 +1052,7 @@ def gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms):
     return vals_inic
 
 
-def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, método=None):
+def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_like=False, método=None):
     if tipo_proc == 'patrón':
         likes = np.zeros([len(eval)])
         poly = list(eval.keys())
@@ -1080,6 +1066,8 @@ def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, método
                 linear[p] = simple_shape(np.arange(1, sim.shape[0] + 1), sim[:, poly.index(p)], 'linear', gof=True)
         if valid:
             return likes, linear, shps
+        elif valid_like:
+            return likes
 
         elif método == 'abc' or método == 'sceua' or método == 'fscabc':
             return _cls_objfc(cls=cls, obj_func='aic', min_max='min', likes=likes)

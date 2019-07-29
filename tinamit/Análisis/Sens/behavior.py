@@ -510,7 +510,7 @@ def icc(Y, icc_type='icc2'):
 
     return ICC
 
-def inequal_theil(y_predict, y_obs):
+def theil_inequal(y_predict, y_obs):
     mu_pred = np.nanmean(y_predict)
     mu_obs = np.nanmean(y_obs)
 
