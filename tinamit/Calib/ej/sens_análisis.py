@@ -1,17 +1,21 @@
 import os
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+
 from collections import Counter
 from sklearn.cluster import KMeans
+
 import scipy.cluster.hierarchy as sch
 from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-from tinamit.Análisis.Sens.behavior import find_best_behavior
+from tinamit.Análisis.Sens.anlzr import carg_simul_dt
+from tinamit.Análisis.Sens.behavior import find_best_behavior, predict, simple_shape, compute_rmse
+from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid
 from tinamit.Geog.Geog import _gen_clrbar_dic, _gen_d_mapacolores
 from tinamit.Calib.ej.soil_class import p_soil_class
 from tinamit.Calib.ej.info_paráms import mapa_paráms
-from tinamit.Calib.ej.info_analr import *
+# from tinamit.Calib.ej.info_analr import *
 from tinamit.Geog.Geog import Geografía
 from tinamit.Conectado import Conectado
 from tinamit.Ejemplos.en.Ejemplo_SAHYSMOD.SAHYSMOD import Envoltura
@@ -24,8 +28,7 @@ def gen_mod():
     modelo = Conectado()
 
     # Establish SDM and Biofisical model paths. The Biofisical model path must point to the Python wrapper for the model
-    modelo.estab_mds(
-        'D:\Thesis\pythonProject\Tinamit\\tinamit\\Ejemplos\en\Ejemplo_SAHYSMOD\\Vensim\\Tinamit_Rechna.vpm')
+    modelo.estab_mds('D:\Gaby\Tinamit\\tinamit\Ejemplos\en\Ejemplo_SAHYSMOD\\Vensim\\Tinamit_Rechna.vpm')
 
     modelo.estab_bf(Envoltura)
     modelo.estab_conv_tiempo(mod_base='mds', conv=6)
@@ -122,59 +125,62 @@ def _gen_poly_dt_for_geog(method, d_fit_behav_arch, save_arch, num_sam):
     np.save(save_arch + f'patt_sens_simul', patt_sens_simul)
 
 
-def _read_dt_4_map(method, si=None):
-    method.capitalize()
-    if method == 'Morris':
+def _read_dt_4_map(method, si=None, load_data=None, egr_path=None):
+    paso_data = load_data['paso_tiempo_egr']
+    mean_data = load_data['promedio_egr']
+    behav_data = load_data['behav_pattern_egr']
+
+    if method == 'morris':
         pasos = \
-            verif_sens('morris', 'paso_tiempo', mapa_paráms, p_soil_class, egr=paso_data_mor, si='mu_star')['morris'][
+            verif_sens('morris', 'paso_tiempo', mapa_paráms, p_soil_class, egr=paso_data, si='mu_star')['morris'][
                 'paso_tiempo']['mds_Watertable depth Tinamit']
 
         means = \
-            verif_sens('morris', list(mean_data_mor.keys())[0], mapa_paráms, p_soil_class, egr=mean_data_mor,
+            verif_sens('morris', list(mean_data.keys())[0], mapa_paráms, p_soil_class, egr=mean_data,
                        si='mu_star')[
                 'morris'][
-                list(mean_data_mor.keys())[0]]['mds_Watertable depth Tinamit']
+                list(mean_data.keys())[0]]['mds_Watertable depth Tinamit']
 
-        behaviors = verif_sens('morris', list(behav_correct_const_dt.keys())[0], mapa_paráms, p_soil_class,
-                               egr=behav_correct_const_dt,
-                               si='mu_star')['morris'][list(behav_correct_const_dt.keys())[0]][
+        behaviors = verif_sens('morris', list(behav_data.keys())[0], mapa_paráms, p_soil_class,
+                               egr=behav_data, si='mu_star')['morris'][list(behav_data.keys())[0]][
             'mds_Watertable depth Tinamit']
-
-        no_ini = no_ini_mor
 
         ps = [0, 5, 10, 15, 20]
 
-        return {'pasos': pasos, 'means': means, 'behaviors': behaviors, 'no_ini': no_ini, 'ps': ps}
+        return {'pasos': pasos, 'means': means, 'behaviors': behaviors, 'no_ini': load_data['fited_behav'], 'ps': ps}
 
     else:
+        paso_arch = egr_path['paso_arch']
+        mean_arch = egr_path['mean_arch']
+        behav_arch = egr_path['behav_arch']
+
         if si is None:
             si = 'Si'
         pasos = \
-            verif_sens('fast', list(paso_data_fast.keys())[0], mapa_paráms, p_soil_class, egr_arch=paso_arch_fast,
+            verif_sens('fast', list(paso_data.keys())[0], mapa_paráms, p_soil_class, egr_arch=paso_arch,
                        si=si,
                        dim=215)[
-                'fast'][list(paso_data_fast.keys())[0]]['mds_Watertable depth Tinamit']  # 9prms * 215polys
+                'fast'][list(paso_data.keys())[0]]['mds_Watertable depth Tinamit']  # 9prms * 215polys
         for param, d_paso in pasos.items():
             for key in d_paso:
                 d_paso[key] = np.asarray([0 if np.isnan(val) else val for val in d_paso[key]])
 
         means = \
-            verif_sens('fast', list(mean_data_fast.keys())[0], mapa_paráms, p_soil_class, egr_arch=mean_arch_fast,
+            verif_sens('fast', list(mean_data.keys())[0], mapa_paráms, p_soil_class, egr_arch=mean_arch,
                        si=si,
                        dim=215)[
-                'fast'][list(mean_data_fast.keys())[0]]['mds_Watertable depth Tinamit']
+                'fast'][list(mean_data.keys())[0]]['mds_Watertable depth Tinamit']
         for param in means:
             means[param] = np.asarray([0 if np.isnan(v) else v for v in means[param]])
 
         behaviors = \
-            verif_sens('fast', list(behav_data_fast.keys())[0], mapa_paráms, p_soil_class, egr_arch=behav_arch_fast,
+            verif_sens('fast', list(behav_data.keys())[0], mapa_paráms, p_soil_class, egr_arch=behav_arch,
                        si=si,
-                       dim=215)['fast'][list(behav_data_fast.keys())[0]]['mds_Watertable depth Tinamit']
+                       dim=215)['fast'][list(behav_data.keys())[0]]['mds_Watertable depth Tinamit']
 
-        no_ini = no_ini_fast
         ps = [0, 1, 2, 3, 4]
 
-        return {'pasos': pasos, 'means': means, 'behaviors': behaviors, 'no_ini': no_ini, 'ps': ps}
+        return {'pasos': pasos, 'means': means, 'behaviors': behaviors, 'no_ini': behav_data, 'ps': ps}
 
 
 def _integrate_egr(egr_arch, dim, si, mapa_paráms, tipo_egr):
@@ -250,7 +256,7 @@ def _single_poly(samples, i, f_simul_arch, gaurdar):
     for j in range(samples):
         print(f'this is {j}-th sample')
         behav = np.load(f_simul_arch + f"f_simul_{j}.npy").tolist()
-        fited_behav[i][j] = find_best_behavior(behav, trans_shape=i)[0]
+        fited_behav[i][j] = find_best_behavior(behav, trans_shape=i)[0] #TODO
     if gaurdar is not None:
         np.save(gaurdar + f'fit_beh_poly-{i}', fited_behav)
 
@@ -288,7 +294,6 @@ def merge_dict(method, merg1, merg2, save_path):
             merg2['superposition']['mds_Watertable depth Tinamit']['spp_oscil_aten_log']
 
         np.save(save_path, merg1)
-
     elif method == 'fast':
         for i in range(215):
             m1 = np.load(merg1 + f'egr-{i}').tolist()
@@ -308,15 +313,14 @@ def verif_sens(método, tipo_egr, mapa_paráms, p_soil_class, si, dim=None, egr=
         egr = _integrate_egr(egr_arch, dim, si, mapa_paráms, tipo_egr)
 
     if tipo_egr == "forma" or tipo_egr == 'superposition':
-        final_sens = {método: {tipo_egr: {p_name: {b_name: {bp_gof: {para: {f_name: np.asarray([f_val[id][i]
-                                                                                                for i, id in enumerate(
-                p_soil_class)])
-                                                                            for f_name, f_val in
-                                                                            val.items()} if para in mapa_paráms else val
-                                                                     for para, val in bp_gof_val[si].items()}
-                                                            for bp_gof, bp_gof_val in b_val.items()}
-                                                   for b_name, b_val in p_val.items()}
-                                          for p_name, p_val in egr[tipo_egr].items()}}}
+        final_sens = {método: {tipo_egr: {p_name: {gof_name: {bp_gof: {bp: {para: {f_name: np.asarray([f_val[id][i]
+                                                                                for i, id in enumerate(p_soil_class)])
+                                                                            for f_name, f_val in val.items()} if para in mapa_paráms else val
+                                                                       for para, val in d_gof[si].items()}
+                                                                     for bp, d_gof in bp_gof_val.items()}
+                                                            for bp_gof, bp_gof_val in d_patt.items()}
+                                                   for gof, d_patt in gof_name.items()}
+                                          for p_name, gof_name in egr[tipo_egr].items()}}}
 
 
     elif tipo_egr == "paso_tiempo":
@@ -338,7 +342,7 @@ def verif_sens(método, tipo_egr, mapa_paráms, p_soil_class, si, dim=None, egr=
     return final_sens
 
 
-def analy_behav_by_dims(method, samples, dims, f_simul_arch, dim_arch=None, gaurdar=None):
+def analy_behav_by_dims(method, samples, dims, f_simul_arch, dim_arch=None, gaurdar=None, gof_type=['aic']):
     if dim_arch is None:
         if method == 'morris':
             fited_behav = {i: {j: {} for j in range(samples)} for i in range(dims)}
@@ -346,7 +350,7 @@ def analy_behav_by_dims(method, samples, dims, f_simul_arch, dim_arch=None, gaur
                 print(f'this is {j}-th sample')
                 behav = np.load(f_simul_arch + f"f_simul_{j}.npy").tolist()
                 for i in range(dims):
-                    fited_behav[i][j] = find_best_behavior(behav, trans_shape=i)[0]
+                    fited_behav[i][j] = find_best_behavior(behav, trans_shape=i, gof_type=gof_type)[0] #TODO
                     print(f'processing {i} poly')
             if gaurdar is not None:
                 np.save(gaurdar + 'fited_behav', fited_behav)
@@ -418,12 +422,16 @@ def clustering(points, n_cls, valid=False):
         return {'km_lst': km_lst, 'km_cls': km_cls, 'y_km': y_km, 'd_km': d_km}
 
 
-def gen_counted_behavior(fited_behav_arch, gaurdar=None):
+def gen_counted_behavior(fited_behav_arch, gaurdar=None, gof_type=['aic']):
     fited_behaviors = np.load(fited_behav_arch).tolist()
-    counted_all_behaviors = []
+    counted_all_behaviors = {gof: [ ] for gof in gof_type}
     for i in range(len(fited_behaviors)):
-        counted_all_behaviors.extend(fited_behaviors[i])
-    counted_all_behaviors = set(counted_all_behaviors)
+        for gof in gof_type:
+            counted_all_behaviors[gof].extend(list(set([v[gof][0] for i, v in fited_behaviors[i].items()])))
+
+    for gof in gof_type:
+        counted_all_behaviors[gof] = set(counted_all_behaviors[gof])
+
     if gaurdar is not None:
         np.save(gaurdar + 'counted_all_behaviors', counted_all_behaviors)
     else:
@@ -459,19 +467,17 @@ def gen_row_col(behaviors, method):
     spp = [pt for pt in col_l if pt.startswith('spp')]
 
     col = [f'n{i}' for i in range(1, 7)]
-    col.extend([f'S{i}' for i in range(1, len(col_l) - len(spp) + 1)])
-    col.extend([f'D{i}' for i in range(1, len(spp) + 1)])
+    col.extend([f'S{i}' for i in range(1, len(col_l) - len(spp)+1)])
+    col.extend([f'D{i}' for i in range(1, len(spp)+1)])
 
     col_new = col[:6]
-    col_new.extend([f'a{i}' for i in range(1, len(gof) + 1)])
-    col_new.extend([f'b{i}' for i in range(1, len(col_l) - len(gof) - len(spp) + len(spp_gof) + 1)])
+    col_new.extend([f'a{i}' for i in range(1, len(gof)+1)])
+    col_new.extend([f'b{i}' for i in range(1, len(col_l) - len(gof) - len(spp) + len(spp_gof) +1)])
     col_new.extend([f'c{i}' for i in range(1, len(spp) - len(spp_gof) + 1)])
 
     row = [p for p in behaviors['log']['bp_params']]
     row_labels = ['Ptq', 'Ptr', 'Kaq', 'Peq', 'Pex', 'POH, Summer', 'POH, Winter', 'CTW', 'Dummy']
 
-    print(col_new)
-    print(col_labels)
     return row_labels, col, col_labels, row, col_new
 
 
@@ -538,8 +544,8 @@ def gen_geog_map(gaurd_arch, measure='paso_tiempo', patt=None, method='Morris', 
                      unid='% of sensitivity simulation data', path=gaurd_arch)
 
 
-def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, si=None, cluster=False, cls=None):
-    read_dt = _read_dt_4_map(method, si=si)
+def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si=None, cluster=False, cls=None):
+    read_dt = _read_dt_4_map(method, si=si, load_data=load_data)
     r_c = gen_row_col(read_dt['behaviors'], method)
 
     data = np.empty([len(r_c[0]), len(r_c[4])])
@@ -654,8 +660,8 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, si=None, clus
         else:
             points = np.transpose(data[:, 1:])
             cluster = clustering(points, cls)
-            cls_col_n_od = ['a1']
-            cls_col_km = ['a1']
+            cls_col_n_od = ['N1']
+            cls_col_km = ['N1']
             data_new_od = np.transpose(cluster['n_points'])
             data_km = np.transpose(cluster['km_cls'])
             for j in range(len(r_c[4]) - 1):
@@ -1079,3 +1085,53 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
     fig.tight_layout(h_pad=1)
     fig.savefig(archivo, dpi=dpi)
     plt.close()
+
+def criteria_stat(num_sample, sample_path, simul_arch, gof_type=['aic', 'bic', 'mic', 'srm', 'press', 'fpe']):
+    var_egr='mds_Watertable depth Tinamit'
+    poly = np.sort(np.concatenate((list(ori_calib[1]), list(ori_valid[1]))))
+
+    gof = {g: {cri: np.zeros([num_sample, len(poly)]) for cri in ['converage', 'linear', 'rmse']} for g in gof_type}
+
+    for i in range(num_sample):
+        simulation = carg_simul_dt(simul_arch, i, var_egr, 215)[0][str(i)]
+        sample_data = np.load(sample_path+f'{i}.npy').tolist()
+
+        for j, d in enumerate(poly):
+            print(f"processing sample {i}, poly-{j}")
+            sam_dt = {
+                patt: {bp_g: {bpg: v[0][d - 1] for bpg, v in d_bp_g.items()} for bp_g, d_bp_g in d_dt.items()} for
+                patt, d_dt in sample_data.items()}
+
+            d_bp = find_best_behavior(sam_dt, gof_type=gof_type)[0]
+
+            sim_linear = simple_shape(np.arange(len(simulation)), simulation[:, d - 1], tipo_egr='linear', gof=False)['bp_params'][
+                'slope']
+
+            for g in gof_type:
+                pred =  predict(np.arange(len(simulation)), sam_dt[d_bp[g][0][0]]['bp_params'], d_bp[g][0][0])
+                gof[g]['converage'][i][j] =  np.count_nonzero(~np.isnan(pred))/len(simulation)
+                gof[g]['linear'][i][j] = (np.sign(sim_linear) == np.sign(
+                    simple_shape(np.arange(len(simulation)), pred, tipo_egr='linear', gof=False)['bp_params']['slope']))
+                gof[g]['rmse'][i][j] = compute_rmse(simulation[:,j], pred)
+
+    np.save("D:\Gaby\Tinamit\Dt\Mor\\gof_stat", gof)
+    return gof
+
+def plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, plot_path):
+    print(f"plot path for sample {sam_ind}")
+    colors = {'aic': 'g', 'bic': 'b', 'mic': 'magenta', 'srm': 'cyan', 'press': 'black', 'fpe': 'yellow'}
+    markers = {'aic': 'x', 'bic': 4, 'mic': ',', 'srm': '+', 'press': '.', 'fpe': 5}
+    for poly in range(y_data.shape[1]):
+        plt.ioff()
+        x = np.arange(len(y_data))
+        plt.plot(x, y_data[:, poly], label=f'Polygon {poly + 1}', color='r', linewidth=5, alpha=0.5)
+
+        for criteria, l_pattern in counted_all_behaviors.items():
+            y_criteria = predict(x, all_beh_dt[poly][l_pattern[poly]]['bp_params'], l_pattern[poly])
+            plt.plot(x, y_criteria, label=f'{criteria.upper()}: {l_pattern[poly]}', color=colors[criteria], linestyle='dashed', marker=markers[criteria], alpha=0.6)
+
+        plt.legend(prop={'size': 7})
+        plt.tight_layout()
+        plt.savefig(plot_path + f'{sam_ind}_{poly}', dpi=500)
+        plt.clf()
+        plt.close('all')

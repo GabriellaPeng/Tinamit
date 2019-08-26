@@ -58,5 +58,31 @@ calib_líms_paráms = {'Kaq': [(26, 103), (26, 120), (26, 158), (26, 52)],
                      'Capacity per tubewell': (100.8, 201.6),
                      }
 
+def _soil_canal(all_poly_dt):
+    cls = ['Buchanan, Head', 'Buchanan, Middle', 'Buchanan, Tail', 'Farida, Head', 'Farida, Middle', 'Farida, Tail',
+           'Jhang, Middle', 'Jhang, Tail', 'Chuharkana, Tail']
+
+    s_p = {c: [ ] for c in cls}
+
+    for p in all_poly_dt:
+        if p in (17, 52, 185):
+            s_p[cls[0]].append(p)
+        elif p in (36, 85, 132):
+            s_p[cls[1]].append(p)
+        elif p in (110, 125, 215):
+            s_p[cls[2]].append(p)
+        elif p in (7, 13, 76, 71):
+            s_p[cls[3]].append(p)
+        elif p in (25, 77, 123, 168,171):
+            s_p[cls[4]].append(p)
+        elif p in (54, 130, 172, 174, 178, 187, 191, 202, 205):
+            s_p[cls[5]].append(p)
+        elif p in (16, 22, 80, 94):
+            s_p[cls[6]].append(p)
+        elif p in (50, 121):
+            s_p[cls[7]].append(p)
+        elif p in (143, 164, 175, 203):
+            s_p[cls[8]].append(p)
+    return s_p
 # 'Gw - Groundwater extraction': [(0.08, 0.35)]
 # GW6, Per

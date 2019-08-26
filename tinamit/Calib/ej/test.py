@@ -1,38 +1,53 @@
-import os
 import numpy as np
-from xarray import Dataset
-from tinamit.Análisis.Valids import _plot_poly
-from tinamit.cositas import cargar_json
-from matplotlib import pyplot
-from tinamit.Calib.ej.cor_patrón import ori_valid, ori_calib
+# vr = 'mds_Watertable depth Tinamit'
+# mtd = ['mle', 'fscabc', 'demcz', 'dream']
+# data  = {m:{}for m in mtd}
+#
+# for m in mtd:
+#     for obj_func in ['aic_rev', 'rmse_rev', 'nse_rev']:
+#         if 'aic' in obj_func:
+#             obj_func = 'aic_rev_patrón'
+#         else:
+#             obj_func = f'{obj_func}_multidim'
+#
+#         path  = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\" + m+f'\\valid_{obj_func}_like.npy'
+#         data[m][obj_func] = np.load(path).tolist()[vr]
+#
 
-var = 'mds_Watertable depth Tinamit'
-m='abc'
-if m == 'abc':
-    n_sim = (0, 145)
-    sim= "D:\Thesis\pythonProject\localuse\Dt\Calib\simular\\new\\fscabc\\aic_old\\"
-    aic = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\abc\\May-11\\aic.npy").tolist()
-    aic_rev = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\abc\\May-11\\aic_rev.npy").tolist()
-else:
-    n_sim = (0, 495)
-    sim = "D:\Thesis\pythonProject\localuse\Dt\Calib\simular\\new\\old_dream\dream\\aic\\"
-    aic = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\dream\\May-07\\aic.npy").tolist()
-    aic_rev = np.load("D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\dream\\May-07\\aic_rev.npy").tolist()
+# def aic(a, b):
+#     print('aic', a, b)
+#
+# def bic(a, b):
+#     print('bic', a, b)
+#
+# fc = {'aic': aic, 'bic': bic}
 
-val1, val2= np.sort(aic['prob'])[-10:-3], np.sort(aic_rev['prob'])[-10:-3]
-shp = np.zeros([20, 41, 18])
+# fc['bic'](1, 2)
+# vars()['aic'](1, 2)
+from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid
+from tinamit.Calib.ej.sens_análisis import criteria_stat
 
-ind= np.argsort(aic_rev['prob'])[-10:-3]
-val = np.sort(aic_rev['prob'])[-10:-3]
-ind_poly  = np.asarray([p-1 for p in ori_calib[1]])
+# f_simul= np.load("D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\f_simul_550.npy").tolist()
+# all_beh_dt = np.load("D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\New folder\\all_beh_dt.npy").tolist()
+# poly18, poly19 = list(ori_calib[1]), list(ori_valid[1])
+# print()
 
-for i, v in enumerate(ind):
-    for p in ori_calib[1]:
-        pyplot.ioff()
-        pyplot.plot(ori_calib[1][p],  label=f'obs_{p}')
-        pyplot.plot(Dataset.from_dict(cargar_json(os.path.join(sim, f'{v+n_sim[0]}')))[var].values[:,p-1], label=f'sim_{v}-{p}')
-        _plot_poly(f'{p}', f'sim{v}', "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\\test\\dream\\aic_rev\\")
+# criteria_stat(625, "D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\f_simul_", "D:\Gaby\Tinamit\Dt\Mor\simular\\625_mor\\")
 
-    for t in range(41):
-        shp[i, t, :] = np.take(Dataset.from_dict(cargar_json(os.path.join(sim, f'{v+n_sim[0]}')))[var].values[t, :], ind_poly)
-print(shp)
+# poly = np.sort(np.concatenate((list(ori_calib[1]), list(ori_valid[1]))))
+gof_stat = np.load("D:\Gaby\Tinamit\Dt\Mor\\gof_stat.npy").tolist()
+#
+# gof_type=['aic', 'bic', 'mic', 'srm', 'press', 'fpe']
+#
+# coverage = {gof: np.zeros(len(poly)) for gof in gof_type}
+# linear = {gof: np.zeros(len(poly)) for gof in gof_type}
+# rmse = {gof: {'mean': np.zeros(len(poly)), 'std': np.zeros(len(poly))} for gof in gof_type}
+# for gof in gof_type:
+#     for i, p in enumerate(poly):
+#         coverage[gof][i] = np.average(gof_stat[gof]['converage'][:, i])
+#         linear[gof][i] = np.count_nonzero(gof_stat[gof]['linear'][:, i])/625
+#         rmse[gof]['mean'][i] =  np.average(gof_stat[gof]['rmse'][:, i])
+#         rmse[gof]['std'][i] = np.std(gof_stat[gof]['rmse'][:, i])
+
+
+print()

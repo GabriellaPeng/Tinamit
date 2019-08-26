@@ -64,37 +64,39 @@ def write_excel(data, columns, file):
             df.to_excel(writer, kind)
 
 
-def compute_patron(interploated_data, norm_obs=None, valid=False):
+def compute_patron(npoly, norm_obs=None, valid=False):
     best_behaviors = {}
-    d_calib = {}
-    d_numero = {}
-    if isinstance(interploated_data, dict):
-        for poly, data in interploated_data.items():
+    linear = { }
+    all_bbehav_params = { }
+    if isinstance(norm_obs, np.ndarray):
+        data = norm_obs
+        for i, p in enumerate(npoly):
+            print(f"Behavior Detecting of Polygon {p} !")
+            re = superposition(np.arange(1, len(data[i, :])+1), data[i, :])[0]
+            best_behaviors[p] = find_best_behavior(re)[0]['aic'][0] # TODO 'aic or not
+            if valid is True:
+                linear[p] = re['linear']
+                all_bbehav_params[p] =  re[best_behaviors[p]]
+
+        if valid is True:
+            return best_behaviors, linear, all_bbehav_params
+        else:
+            return best_behaviors
+
+    else:
+        d_calib = {}
+        d_numero = {}
+        for poly, data in npoly.items():
             data = np.asarray([i for i in data])
             d_numero[poly] = np.asarray(data)
             print(f"Behavior Detecting of Polygon {poly} !")
-            re = superposition(np.asarray(range(len(data))), data)[0]
-            best_behav = find_best_behavior(re)[0]
-            best_behaviors[poly] = best_behav
+            re = superposition(np.asarray(1, len(data)+1), data)[0]
+            best_behav = find_best_behavior(re)[0] #TODO
+            best_behaviors[poly] = best_behav #TODO
             y_pred = np.asarray(
-                predict(np.array(range(len(data))), re[best_behav[0][0]]['bp_params'], best_behav[0][0]))
-            d_calib[poly] = {best_behav[0][0]: re[best_behav[0][0]], 'y_pred': y_pred}
-
-    else:
-        if isinstance(norm_obs, np.ndarray):
-            data = norm_obs.T
-            for i, p in enumerate(interploated_data['x0'].values):
-                print(f"Behavior Detecting of Polygon {p} !")
-                re = superposition(np.arange(len(data[:, i])), data[:, i])[0]
-                best_behav = find_best_behavior(re)[0]
-                best_behaviors[p] = best_behav[0]
-                y_pred = np.asarray(
-                    predict(np.array(range(len(data))), re[best_behav[0][0]]['bp_params'], best_behav[0][0]))
-                d_calib[p] = {best_behav[0][0]: re[best_behav[0][0]], 'y_pred': y_pred}
-                if valid == 'valid_multi_tests':
-                    d_numero[p] = re
-
-    return best_behaviors, d_calib, d_numero
+                predict(np.array(1, len(data)+1), re[best_behav['aic'][0]]['bp_params'], best_behav[0][0])) #TODO
+            d_calib[poly] = {best_behav['aic'][0]: re[best_behav['aic'][0]], 'y_pred': y_pred} #TODO
+        return best_behaviors, d_calib, d_numero
 
 
 def plot_pattern(interploated_data, path):
@@ -104,7 +106,7 @@ def plot_pattern(interploated_data, path):
         print(f"Polygon {poly} is under processing!")
         plt.plot(data)
         re = superposition(range(len(data)), data)[0]
-        gof_dict = find_best_behavior(re)[1]
+        gof_dict = find_best_behavior(re)[1] #TODO
         fited_behaviors[poly].append(gof_dict[0])
         m = 1
         while m < len(gof_dict):

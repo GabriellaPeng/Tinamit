@@ -1,15 +1,19 @@
 import operator
 import numpy as np
-from tinamit.Calib.ej.ej_calib.calib_análisis import detect_21, point_based, barlas, \
-    plot_top_sim, prep_cluster_dt, coa, load_path
+
+from tinamit.Análisis.Valids import _plot_poly
+from tinamit.Calib.ej.ej_calib.calib_análisis import detect_21, point_based, barlas, plot_top_sim, prep_cluster_dt, coa, load_path  # , sim_eq_obs
+from tinamit.Calib.ej.info_paráms import _soil_canal
 from tinamit.Calib.ej.sens_análisis import clustering
+import matplotlib.pyplot as plt
 
 def load_results(cls, type, method):
-    all_tests, vr, calib_ind, trend_multi, trend_barlas, d_trend, agreement, calib_abc, gard = load_path(cls, type, method)
+    all_tests, vr, calib_ind, trend_multi, trend_barlas, d_trend, agreement, calib_dream, gard = load_path(cls, type, method)
+
     kap, icc = coa(vr, calib_ind, agreement)
-    aic, aic_21 = detect_21(calib_abc, all_tests, vr, 'aic_21', calib_ind, operator.gt, 5)
-    rmse_21 = detect_21(calib_abc, all_tests, vr, 'rmse_21', calib_ind, operator.lt, 0.5)
-    nse_21 = detect_21(calib_abc, all_tests, vr, 'nse_21', calib_ind, operator.gt, 0.65)
+    aic, aic_21 = detect_21(calib_dream, all_tests, vr, 'aic_21', calib_ind, operator.gt, 5)
+    rmse_21 = detect_21(calib_dream, all_tests, vr, 'rmse_21', calib_ind, operator.lt, 0.5)
+    nse_21 = detect_21(calib_dream, all_tests, vr, 'nse_21', calib_ind, operator.gt, 0.65)
 
     AIC = point_based('AIC', all_tests, 20, calib_ind)
     NSE = point_based('NSE', all_tests, 20, calib_ind)
@@ -26,32 +30,29 @@ def load_results(cls, type, method):
     phase_n, phase_p = barlas(gard + f'{type}7-{method}-phase.npy', calib_ind)
     u_n, u_p = barlas(gard + f'{type}7-{method}-multi_behavior_tests.npy', calib_ind, 'multi_behavior_tests', vr=vr)
 
-    print(plot_top(trend_multi, trend_barlas, calib_ind, all_tests, gard, type, method))
+    print(plot_top(trend_multi, trend_barlas, calib_ind, all_tests, gard, type, method, calib_dream))
 
     return {'21': [aic_21, rmse_21, nse_21], 'point_based': [AIC, NSE, RMSE],
             'barlas': [t_n, t_p, d_trend, corr_n, corr_p, phase_n, phase_p],
             'coa': [kap, icc]}
 
-def plot_top(trend_multi, trend_barlas, calib_ind, all_tests, gard, type, method):
+def plot_top(trend_multi, trend_barlas, calib_ind, all_tests, gard, type, method, calib_dream):
     trend_multi = trend_multi
     trend_barlas = trend_barlas
-    save_plot = f"D:\Thesis\pythonProject\localuse\Dt\Calib\plot\\{type}\\"
+    save_plot = f"D:\Gaby\Tinamit\Dt\Calib\plot\\{type}\\"
     mismatch = []
     for obj in ['aic_21', 'kappa', 'rmse_21', 'nse_21', 'multi_behavior_tests', 'AIC']:
-        mismatch.append(plot_top_sim(obj, trend_multi, trend_barlas, save_plot, calib_ind, all_tests, gard, type, method))
+        mismatch.append(plot_top_sim(obj, trend_multi, trend_barlas, save_plot, calib_ind, all_tests, gard, type, method, calib_dream))
     return mismatch
-
-load_results('class_rev', 'reverse', 'fscabc')
 
 def prep_cluster(sim_eq_obs):
     vr = 'mds_Watertable depth Tinamit'
     sim_eq_obs = np.load(sim_eq_obs).tolist()
-    polys = np.asarray(list(sim_eq_obs['mds_Watertable depth Tinamit']['aic_21']))
+    polys = np.asarray(list(sim_eq_obs['mds_Watertable depth Tinamit']['kappa']))
 
     aic_21 = prep_cluster_dt('aic_21', vr, sim_eq_obs)
     d_cls = clustering(aic_21, n_cls=2, valid=True)['d_km']
-    aic_21 = {0: polys[d_cls[0]], 1: polys[d_cls[1]]}
-    print(aic_21)
+    aic_21 = {0: polys[d_cls[0]], 1:polys[d_cls[1]]}
 
     rmse_21 = prep_cluster_dt('rmse_21', vr, sim_eq_obs)
     d_cls = clustering(rmse_21, n_cls=2, valid=True)['d_km']
@@ -66,7 +67,6 @@ def prep_cluster(sim_eq_obs):
     kappa = {0: polys[d_cls[0]], 1: polys[d_cls[1]]}
     return aic_21, rmse_21, nse_21, kappa
 
-# sim_eq_obs = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\\reverse\\t_sim_all\\all\\sim_eq_obs.npy"
 # aic_21, rmse_21, nse_21, kappa = prep_cluster(sim_eq_obs)
 
 
@@ -96,3 +96,4 @@ def prep_cluster(sim_eq_obs):
 # both_b_k = sorted([i for i in phase_n if i in kapp_21['n']])
 # both_b_aic = sorted([i for i in u_n if i in AIC['n']])
 # both_aic_k = sorted([i for i in kapp_21['n'] if i in AIC['n']])
+

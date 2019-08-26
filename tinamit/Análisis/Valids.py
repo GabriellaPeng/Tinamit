@@ -1,15 +1,17 @@
 import numpy as np
+import minepy
 import scipy.optimize as optim
 import scipy.stats as estad
-from matplotlib import pyplot
+import matplotlib.pyplot as plt
 from pandas.plotting import autocorrelation_plot
+from sklearn.metrics import cohen_kappa_score
 
 from tinamit.Análisis.Calibs import aplastar, patro_proces, gen_gof
-from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova
+from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova, theil_inequal
+from tinamit.Calib.ej.ej_calib.calib_análisis import plot_top_sim_obs, plot_save
 
 
-def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None, save_plot=None,
-                       gard=None, warmup_period=None):
+def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=None, obj_func=None, método=None):
     """
 
     patt_vec['bp_params']
@@ -22,6 +24,7 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None
 
     """
     l_vars = list(obs.data_vars)
+    egr = {vr: {} for vr in l_vars}
 
     if tipo_proc is None:
         mu_obs = obs.mean()
@@ -34,18 +37,7 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None
         todas_sims = np.concatenate([x for x in sims_norm.values()], axis=1)  # 50*63 (63=21*3), 100*26*6,
         todas_obs = np.concatenate([x for x in obs_norm.values()])  # [63]
         sims_norm_T = {vr: np.array([sims_norm[vr][d, :].T for d in range(len(sims_norm[vr]))]) for vr in l_vars}
-    else:
-        mu_obs_matr, sg_obs_matr, obs_norm = aplastar(obs, l_vars)  # 6, 6, 6*21, obs_norm: dict {'y': 6*21}
-        obs_norm = {va: obs_norm for va in l_vars}  # 63, 21*6, [nparray[38, 61]]
-        sims_norm = {vr: np.zeros_like(matrs_simul[vr]) for vr in l_vars}
-        for vr, matrs in matrs_simul.items():
-            for i in range(len(matrs)):
-                for t in range(len(obs['tiempo'])):
-                    sims_norm[vr][i][t] = (matrs[i, t, :] - mu_obs_matr) / sg_obs_matr  # 1*41*19
-                sims_norm_T = {vr: np.array(sims_norm[vr][i, : ].T) for vr in l_vars}  # {'y': 41*19}
 
-    egr = {vr: {} for vr in l_vars}
-    if tipo_proc is None:
         egr = {
             'total': _valid(obs=todas_obs, sim=todas_sims, comport=False),
             'vars': {vr: _valid(obs=obs_norm[vr], sim=sims_norm[vr]) for vr in l_vars},
@@ -54,71 +46,87 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, obj_func=None
         egr['éxito'] = all(v >= tol for ll, v in egr['total'].items() if 'ens' in ll) and \
                        all(v >= tol for vr in l_vars for ll, v in egr['vars'][vr].items() if 'ens' in ll)
 
-    elif tipo_proc == 'multidim':
-        if obj_func.lower() == 'nse':
-            for vr in l_vars:
-                egr[vr]['NSE'] = gen_gof('multidim', sim=sims_norm_T[vr], obj_func='NSE', eval=obs_norm[vr], valid=True)
-                egr[vr]['RMSE'] = gen_gof("multidim", sim=sims_norm_T[vr], obj_func='rmse', eval=obs_norm[vr],
-                                          valid=True)
-        else:
-            egr = {
-                'vars': {vr: _valid(obs=obs_norm[vr].T, sim=sims_norm[vr], tipo_proc=tipo_proc, comport=False) for vr in
-                         l_vars}}
-            egr['éxito'] = all(v >= tol for vr in l_vars for v in egr['vars'][vr]['ens'])
+        for vr in l_vars:
+            egr[vr] = {'nse': gen_gof('multidim', sim=sims_norm_T[vr], obj_func='NSE',
+                                      eval=obs_norm[vr])}
+            egr['éxito_nse'] = all(v >= tol for vr in l_vars for v in egr[vr]['NSE'])
 
-    elif tipo_proc == 'CI':
-        def _ci(sim_norm, obs_norm):  # 495*41*19, 41*19
-            a = {f'season-{t+warmup_period}': [ ] for t in range(len(obs_norm))}
-            for t in range(len(obs_norm)):
-                for p in range(obs_norm.shape[1]):
-                    if np.isnan(obs_norm[t, p]):
-                        a[f'season-{t + warmup_period}'].append(np.nan)
-                    else:
-                        a[f'season-{t + warmup_period}'].append(estad.percentileofscore(sim_norm[:, t, p], obs_norm[t, p]))
-                a[f'season-{t + warmup_period}'] = [estad.percentileofscore(
-                    np.asarray([x for x in a[f'season-{t + warmup_period}'] if not np.isnan(x)]), j, kind='weak')
-                    for j in np.arange(10, 110, 10)]
-                pyplot.ioff()
-                pyplot.plot(np.arange(0.1, 1.1, 0.1), 'g-.', label="Theoratical CI")
-                pyplot.plot([i*0.01 for i in a[f'season-{t+warmup_period}']], 'r.-', label=f"Season {t} CI")
-                pyplot.xticks(np.arange(0, 11), (f'{j}0%CI' for j in range(1, 11)))
-                pyplot.yticks(np.arange(0.1, 1.1, 0.1), [float(f"{i}"[:3]) for i in np.arange(0.1, 1.1, 0.1)])
-                _plot_poly(t, 'CI_season' + tipo_proc, save_plot)
-            return a
-        egr[vr] = _ci(sims_norm[vr],obs_norm[vr].T)
+            return egr
 
-    elif tipo_proc == 'patrón':
-        trend, linear, eval, len_bparam= PatrónValidTest.trend_compare(obs, obs_norm, sims_norm_T, tipo_proc,
-                                                                        l_vars, save_plot=save_plot)
-        egr[vr]['AIC'] = gen_gof(tipo_proc, sim=sims_norm_T[vr], obj_func='AIC', eval=eval,
-                                 len_bparam=len_bparam, valid='point-pattern') #19*41
-        kappa, icc = coeff_agreement(linear, trend, obs['x0'].values)
-        egr[vr]['kappa'] = kappa
-        egr[vr]['icc'] = icc
-        diff_like, diff_wt =gen_gof(tipo_proc, sim=np.asarray(
-            [trend['t_sim']['diff_patt'][p]['y_pred'] for p in trend['t_sim']['diff_patt']]), obj_func='AIC',
-                      eval=np.asarray([trend['t_obs'][p]['y_pred'] for p in trend['t_sim']['diff_patt']]),
-                      len_bparam=len_bparam, valid='pattern-pattern')
-        egr[vr]['aic_diff_patt'] = {'like': diff_like, 'wt': diff_wt}
-        if gard:
-            np.save(gard+'_'+tipo_proc+'_trend', trend)
-        return egr
     else:
-        egr[vr] = {obj_func.lower(): gen_gof('multidim', sim=sims_norm_T[vr], obj_func=obj_func,
-                                             eval=obs_norm[vr])}
-        egr['éxito_nse'] = all(v >= tol for vr in l_vars for v in egr[vr]['NSE'])
-    return egr
+        npoly = obs['x0'].values
 
-def _plot_poly(p, name, save_plot):
-        handles, labels = pyplot.gca().get_legend_handles_labels()
-        handle_list, label_list = [], []
-        for handle, label in zip(handles, labels):
-            if label not in label_list:
-                handle_list.append(handle)
-                label_list.append(label)
-        pyplot.legend(handle_list, label_list)
-        pyplot.savefig(save_plot + f'{name}_{p}')
-        pyplot.close('all')
+        mu_obs_matr, sg_obs_matr, obs_norm = aplastar(npoly, obs[l_vars[0]])  # obs_norm: dict {'y': 6*21}
+        obs_norm = {va: obs_norm.T for va in l_vars}  # [nparray[39*18]]
+
+        all_sim = (matrs_simul[l_vars[0]]['all_res'] - mu_obs_matr) / sg_obs_matr
+        top_sim = (matrs_simul[l_vars[0]]['top_res'] - mu_obs_matr) / sg_obs_matr
+        wt_sims = (matrs_simul[l_vars[0]]['wt_res'] - mu_obs_matr) / sg_obs_matr
+        # mu_sims = (matrs_simul[l_vars[0]]['mu_res'] - mu_obs_matr) / sg_obs_matr
+        # mdn_sims = (matrs_simul[l_vars[0]]['mdn_res'] - mu_obs_matr) / sg_obs_matr
+
+        for vr in l_vars:
+
+            # proc_sim = {'weighted_sim': wt_sims[0], 'mean_sim': mu_sims[0], 'median_sim': mdn_sims[0]}
+            proc_sim = {'weighted_sim': wt_sims[0]}
+
+            # pcentl = _ci(all_sim, obs_norm[vr])
+
+            plot_top_sim_obs(top_sim, obs_norm[vr], npoly, save_plot, proc_sim, pcentl=False, ci=False)
+
+            # egr[vr]['CI'] = pcentl
+
+            # best_behaviors, obs_linear, obs_shps = patro_proces('patrón', npoly, obs_norm[vr], valid=True)
+
+            # egr[vr][tipo_proc] = {obj_func: {}}
+
+            # if tipo_proc == 'multidim':
+            #     egr[vr][tipo_proc][obj_func]['likes'] = gen_gof('multidim', sim=wt_sims[0], eval=obs_norm[vr], valid=True,
+            #                                            obj_func=obj_func, método=método)
+
+            # egr[vr]['Theil'] = {type_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc', 'mse']} for type_sim in
+            #                     proc_sim}
+            # egr[vr][tipo_proc][obj_func] = {ts: {} for ts in proc_sim}
+
+            # for type_sim, sim_val in proc_sim.items():
+            #     for p in range(len(npoly)):
+            #         egr[vr]['Theil'][type_sim]['mse'][p], egr[vr]['Theil'][type_sim]['Um'][p], egr[vr]['Theil'][type_sim]['Us'][p], \
+            #         egr[vr]['Theil'][type_sim]['Uc'][
+            #             p] = theil_inequal(sim_val[:, p], obs_norm[vr][:, p])
+            #
+            #     likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
+            #                                           obj_func='AIC', método=método)  # 19*41
+            #
+            #     egr[vr][tipo_proc][obj_func].update({type_sim: {'aic_likes': likes}})
+
+
+                # egr[vr][tipo_proc][obj_func][type_sim]['trend_agreement'] = coeff_agreement(obs_linear, sim_linear,
+                #                                                                             obs_shps, sim_shps, npoly,
+                #                                                                             sim_val,
+                #                                                                            obs_norm[vr])
+            # likes, sim_linear, sim_shps = gen_gof('patrón', sim=proc_sim['weighted_sim'], eval=best_behaviors, valid=True,
+            #                                       obj_func='AIC', método=método)
+            # egr[vr][tipo_proc][obj_func]['weighted_sim']['trend_agreement'] = coeff_agreement(obs_linear, sim_linear,
+            #                                                                             obs_shps, sim_shps, npoly,
+            #                                                                             proc_sim['weighted_sim'],
+            #                                                                             obs_norm[vr])
+
+            # egr[vr]['proc_sim'] = {'all_sim': all_sim, 'obs_norm': obs_norm[vr]}
+            # egr[vr]['proc_sim'].update({**proc_sim})
+
+            # egr[vr][tipo_proc][obj_func].update({'top_sim': np.zeros([len(top_sim), len(npoly)])})
+            # egr[vr][tipo_proc][obj_func].update({'all_sim': np.zeros([len(all_sim), len(npoly)])})
+            #
+            # for n in range(len(top_sim)):
+            #     egr[vr][tipo_proc][obj_func]['top_sim'][n] = gen_gof('patrón', sim=top_sim[n],
+            #                                                          eval=best_behaviors, valid=False,
+            #                                                          obj_func='AIC', valid_like=True, método=método)
+            # for n in range(len(all_sim)):
+            #     egr[vr][tipo_proc][obj_func]['all_sim'][n] = gen_gof('patrón', sim=all_sim[n],
+            #                                                          eval=best_behaviors, valid=False,
+            #                                                          obj_func='AIC', valid_like=True, método=método)
+
+            return egr
 
 
 def _valid(obs, sim, comport=True, tipo_proc=None):  # obs63, sim 50*63//100*21*6
@@ -215,6 +223,105 @@ def _anlz_tendencia(obs, sim):
     return correctos.mean()
 
 
+def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, weight_sim, obs_dt):
+    # kp<0, the agreement is worsen than random, kp=1 perfect agreement. ICC=1 perfect!
+    mine = minepy.MINE()
+    def _kp(sim, obs):
+        bp_s = []
+        bp_o = []
+        for i, v in enumerate(sim):
+            t_v = (v, obs[i])
+            kp = [(1, 1) if all(v >= 0 for v in t_v) else (0, 0) if all(v < 0 for v in t_v) else (0, 1)
+            if (t_v[0] < 0) & (t_v[0] >= 0) else (1, 0)][0]
+
+            bp_s.append(kp[0])
+            bp_o.append(kp[1])
+        return bp_o, bp_s
+
+    l_sign = [
+        (1, 1) if all(round(v, 2) > 0 for v in t_v) else (0, 0) if all(round(v, 2) <= 0 for v in t_v) else (
+            0, 1) if (round(t_v[0], 2) <= 0) & (round(t_v[1], 2) > 0) else (1, 0) for t_v in
+        [(obs_linear[p]['bp_params']['slope'], sim_linear[p]['bp_params']['slope']) for p in poly]]
+
+    trend_agreement = {'slope': {}, 'slope_intercept': {}, 'bp': {}, 'points_diff': {}}
+    trend_agreement['slope'] = {#'slp_kp': cohen_kappa_score([i[0] for i in l_sign], [i[1] for i in l_sign]),
+                                'slp_sign': l_sign}
+
+    trend_agreement['slope'].update({'sign_kendal': estad.kendalltau([i[0] for i in l_sign], [i[1] for i in l_sign])[0]})
+    trend_agreement['slope'].update({'sign_spearmamanr':estad.spearmanr([i[0] for i in l_sign], [i[1] for i in l_sign])[0]})
+
+    obs_bp_slp =[obs_linear[p]['bp_params']['slope'] for p in poly]
+    sim_bp_slp = [sim_linear[p]['bp_params']['slope'] for p in poly ]
+
+
+    trend_agreement['slope'].update({'bp_kendal': estad.kendalltau(obs_bp_slp, sim_bp_slp)[0]})
+
+    trend_agreement['slope'].update({'bp_spearmanr':  estad.spearmanr(obs_bp_slp, sim_bp_slp)[0]})
+
+    l_sim = [bp for l_bp in [list(sim_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
+    l_obs = [bp for l_bp in [list(obs_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
+
+    trend_agreement['slope_intercept'].update({'bp_icc': ICC_rep_anova(np.asarray([l_obs, l_sim]).T)[0]})
+    trend_agreement['slope_intercept'].update({'bp_kendall': estad.kendalltau(l_obs, l_sim)[0]})
+    trend_agreement['slope_intercept'].update({'bp_spearmanr': estad.spearmanr(l_obs, l_sim)[0]})
+    mine.compute_score(l_obs, l_sim)
+    trend_agreement['slope_intercept'].update({'bp_mic':  mine.mic()})
+
+    kpx, kpy = _kp(l_sim, l_obs)
+    trend_agreement['slope_intercept'].update({'sign_kendall': estad.kendalltau(kpx, kpy)[0]})
+    trend_agreement['slope_intercept'].update({'sign_spearmanr': estad.spearmanr(kpx, kpy)[0]})
+
+    # trend_agreement['slope_intercept'].update({'kappa': cohen_kappa_score(_kp(l_sim, l_obs))})
+    # 1why kp<icc ? 2.why slp_kp<0 # as kp is qualitative and quantitative
+
+    # l_s = [list(sim_linear[p]['bp_params'].values()) for p in poly]
+    # l_o = [list(obs_linear[p]['bp_params'].values()) for p in poly]
+    #
+    # trend_agreement['slope_intercept']['poly_icc'] = {}
+    # for p in range(len(poly)):
+    #     trend_agreement['slope_intercept']['poly_icc'].update({p: ICC_rep_anova(np.asarray([l_o[p], l_s[p]]).T)[0]})
+    b_sim = [bp for l_bp in [list(sim_shps[p]['bp_params'].values()) for p in poly] for bp in l_bp]
+    b_obs = [bp for l_bp in [list(obs_shps[p]['bp_params'].values()) for p in poly] for bp in l_bp]
+
+    trend_agreement['bp'] = {'icc': ICC_rep_anova(np.asarray([b_obs, b_sim]).T)[0]}
+    mine.compute_score(b_obs, b_sim)
+    trend_agreement['bp'] = {'mic': mine.mic()}
+
+    for stat in ['icc', 'spearmanr', 'mic']:
+        trend_agreement['points_diff'][stat] = np.zeros([len(poly)])
+
+    for p in range(len(poly)):
+        wt_sim = np.delete(weight_sim[:, p], np.where(np.isnan(obs_dt[:, p])))
+        obs = obs_dt[:, p][np.where(~np.isnan(obs_dt[:, p]))]
+        trend_agreement['points_diff']['icc'][p] = ICC_rep_anova(np.asarray([wt_sim, obs]).T)[0]
+        mine.compute_score(wt_sim, obs)
+        trend_agreement['points_diff']['mic'][p] = mine.mic()  # data*2
+    # trend_agreement['bp'].update({'kappa': _kp(b_sim, b_obs)})
+    # trend_agreement['bp'].update({'kendal': estad.kendalltau(b_sim, b_obs)[0]})
+    # b_s = [list(sim_shps[p]['bp_params'].values()) for p in poly]
+    # b_o = [list(obs_shps[p]['bp_params'].values()) for p in poly]
+    #
+    # trend_agreement['bp']['poly_icc'] = np.zeros([len(poly)])
+    # for p in range(len(poly)):
+    #     trend_agreement['bp']['poly_icc'][p] = ICC_rep_anova(np.asarray([b_o[p], b_s[p]]).T)[0]
+    #     trend_agreement['bp']['poly_icc_points'][p] = ICC_rep_anova(np.asarray(weight_sim[p], obs_dt[p]).T)[0]
+
+    return trend_agreement
+
+
+def _ci(sim_norm, obs_norm):  # 495*41*19, 41*19
+    pcentl = np.zeros_like(obs_norm, dtype=float)
+    for t in range(len(obs_norm)):
+        for p in range(obs_norm.shape[1]):
+            if np.isnan(obs_norm[t, p]):
+                pcentl[t, p] = np.nan
+            else:
+                perc = estad.percentileofscore(sim_norm[:, t, p], obs_norm[t, p], kind='weak')
+                pcentl[t, p] = abs(0.5 - perc / 100) * 2
+
+    return pcentl
+
+
 class PatrónValidTest(object):
     def __init__(símismo, obs, obs_norm, tipo_proc, sims_norm, l_vars, save_plot, gard=None):
         símismo.obs = obs
@@ -233,18 +340,14 @@ class PatrónValidTest(object):
 
         for vr in vars_interés:
             print("\n****Start detecting observed data****\n")
-            t_obs = patro_proces(tipo_proc, obs, obs_norm[vr], valid='valid_multi_tests')
+            t_obs = patro_proces(tipo_proc, poly, obs_norm[vr], valid=True)
             trend['t_obs'] = t_obs[0]
-            trend['t_obs'].update({'best_patt': [list(v.keys())[0] for i, v in t_obs[0].items()]})
-            linear['t_obs'].update({p: list(t_obs[2][p]['linear']['bp_params'].values()) for p in t_obs[2]})
+            linear['t_obs'] = t_obs[1]
 
             print("\n****Start detecting simulated data****\n")
-            t_sim = patro_proces(tipo_proc, obs, sim_norm[vr], valid='valid_multi_tests')
+            t_sim = patro_proces(tipo_proc, poly, sim_norm[vr], valid='valid_multi_tests')
             trend['t_sim'].update({'best_patt': [list(v.keys())[0] for i, v in t_sim[0].items()]})
             linear['t_sim'].update({p: list(t_sim[2][p]['linear']['bp_params'].values()) for p in t_sim[2]})
-
-            matriz_vacía = np.asarray(
-                [t_obs[0][p]['y_pred'] for p, d_data in t_obs[0].items() if not isinstance(p, str)])
 
             # if the pattens are the same and the values with index are the same
             trend['t_sim']['same_patt'] = {}
@@ -265,21 +368,21 @@ class PatrónValidTest(object):
                 trend['t_sim']['diff_patt'][p] = {list(d_v.keys())[0]: list(d_v.values())[0], 'y_pred': y_pred}
 
             if save_plot is not None:
-                pyplot.ioff()
+                plt.ioff()
                 for p in poly:
                     if p in trend['t_sim']['same_patt']:
                         same_occr = trend['t_sim']['same_patt'][p]['y_pred']
-                        pyplot.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
-                        pyplot.plot(same_occr, 'r-.', label=f"same")
-                        _plot_poly(p, 'Same_pattern', save_plot)
+                        plt.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
+                        plt.plot(same_occr, 'r-.', label=f"same")
+                        plot_save(p, 'Same_pattern', save_plot)
                     else:
                         diff_occr = trend['t_sim']['diff_patt'][p]['y_pred']
-                        pyplot.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
-                        pyplot.plot(diff_occr, 'b.', label=f"diff")
-                        _plot_poly(p,'Diff_pattern', save_plot)
-                    pyplot.close('all')
+                        plt.plot(trend['t_obs'][p]['y_pred'], 'g--', label="t_obs")
+                        plt.plot(diff_occr, 'b.', label=f"diff")
+                        plot_save(p, 'Diff_pattern', save_plot)
+                    plt.close('all')
 
-            return trend, linear, matriz_vacía, t_obs[1]
+            return trend, linear
 
     def detrend(símismo, poly, trend, obs_norm, sim_norm):
         def _d_trend(d_bparams, patt, dt_norm):
@@ -305,19 +408,19 @@ class PatrónValidTest(object):
                                                        sim_norm[vr][list(poly).index(p), :])  # 2*41*18--18*41--41
 
             if símismo.save_plot is not None:
-                pyplot.ioff()
+                plt.ioff()
                 for p in detrend['d_sim']:
-                    pyplot.plot(detrend['d_obs'][p], 'g--', label="d_obs")
-                    pyplot.plot(detrend['d_sim'][p], 'r-.', label=f"d_sim")
-                    handles, labels = pyplot.gca().get_legend_handles_labels()
+                    plt.plot(detrend['d_obs'][p], 'g--', label="d_obs")
+                    plt.plot(detrend['d_sim'][p], 'r-.', label=f"d_sim")
+                    handles, labels = plt.gca().get_legend_handles_labels()
                     handle_list, label_list = [], []
                     for handle, label in zip(handles, labels):
                         if label not in label_list:
                             handle_list.append(handle)
                             label_list.append(label)
-                    pyplot.legend(handle_list, label_list)
-                    pyplot.savefig(símismo.save_plot + f'd_poly_{p}')
-                    pyplot.close('all')
+                    plt.legend(handle_list, label_list)
+                    plt.savefig(símismo.save_plot + f'd_poly_{p}')
+                    plt.close('all')
         if símismo.gard:
             np.save(símismo.gard + '-detrend', detrend)
         return detrend
@@ -357,25 +460,25 @@ class PatrónValidTest(object):
         autocorrelation = {'corr_obs': {}, 'corr_sim': {}}
         for p, v in detrend['d_obs'].items():
             s_obs = _rk(v)
-            pyplot.ioff()
+            plt.ioff()
             autocorrelation_plot(s_obs, color='green', linestyle='dashed', label='obs_autocorr')
             autocorrelation['corr_obs'].update({p: s_obs})
 
             s_sim = _rk(detrend['d_sim'][p])
-            pyplot.plot(s_sim, 'r-.', label=f"autocorr_sim")
+            plt.plot(s_sim, 'r-.', label=f"autocorr_sim")
             if not autocorrelation['corr_sim'] or p not in autocorrelation['corr_sim']:
                 autocorrelation['corr_sim'][p] = {}
             autocorrelation['corr_sim'][p] = s_sim
-            pyplot.title("Autocorrelations of the time patterns (after trend removal)")
-            handles, labels = pyplot.gca().get_legend_handles_labels()
+            plt.title("Autocorrelations of the time patterns (after trend removal)")
+            handles, labels = plt.gca().get_legend_handles_labels()
             handle_list, label_list = [], []
             for handle, label in zip(handles, labels):
                 if label not in label_list:
                     handle_list.append(handle)
                     label_list.append(label)
-            pyplot.legend(handle_list, label_list)
-            pyplot.savefig(símismo.save_plot + f'autocorr_{p}')
-            pyplot.close('all')
+            plt.legend(handle_list, label_list)
+            plt.savefig(símismo.save_plot + f'autocorr_{p}')
+            plt.close('all')
 
         autocorr_var = {'var_obs': {}, 'var_sim': {}, 'diff': {}, 'se': {}, 'pass_diff': {}}
         for p, vec_obs in autocorrelation['corr_obs'].items():
@@ -401,22 +504,22 @@ class PatrónValidTest(object):
                     autocorr_var['pass_diff'][p].append(np.nan)
 
         if símismo.save_plot is not None:
-            pyplot.ioff()
+            plt.ioff()
             for p in autocorr_var['diff']:
                 autocorrelation_plot(autocorr_var['diff'][p], y_label='Differences', label='diff', color='green',
                                      linestyle='dashed')
-                pyplot.plot(autocorr_var['se'][p], 'r-.', label=f"2SE")
-                pyplot.plot(sorted(np.negative(autocorr_var['se'][p])), 'r-.')
-                pyplot.title("Differences of ACFs, 2Se confidence band")
-                handles, labels = pyplot.gca().get_legend_handles_labels()
+                plt.plot(autocorr_var['se'][p], 'r-.', label=f"2SE")
+                plt.plot(sorted(np.negative(autocorr_var['se'][p])), 'r-.')
+                plt.title("Differences of ACFs, 2Se confidence band")
+                handles, labels = plt.gca().get_legend_handles_labels()
                 handle_list, label_list = [], []
                 for handle, label in zip(handles, labels):
                     if label not in label_list:
                         handle_list.append(handle)
                         label_list.append(label)
-                pyplot.legend(handle_list, label_list)
-                pyplot.savefig(símismo.save_plot + f'diff_{p}')
-                pyplot.close('all')
+                plt.legend(handle_list, label_list)
+                plt.savefig(símismo.save_plot + f'diff_{p}')
+                plt.close('all')
 
         if símismo.gard:
             np.save(símismo.gard + '-Rk', autocorrelation)
@@ -501,13 +604,13 @@ class PatrónValidTest(object):
                 phase[p].update({'lag': lag_v, f'|max − min|': np.nanmax(lag_v) - np.nanmin(lag_v)})
 
                 if símismo.save_plot is not None:
-                    pyplot.ioff()
+                    plt.ioff()
                     autocorrelation_plot(lag_v, y_label='Correlations', label='ccf',
                                          color='blue', linestyle='dashed')
-                    pyplot.title(f"Cross-correlation between obs and sim patterns of poly-{p},sim")
-                    pyplot.legend()
-                    pyplot.savefig(símismo.save_plot + f'ccf_{p}')
-                    pyplot.close('all')
+                    plt.title(f"Cross-correlation between obs and sim patterns of poly-{p},sim")
+                    plt.legend()
+                    plt.savefig(símismo.save_plot + f'ccf_{p}')
+                    plt.close('all')
 
         if símismo.gard:
             np.save(símismo.gard + '-phase', phase)
@@ -545,27 +648,3 @@ class PatrónValidTest(object):
         phase = símismo.phase_lag(detrend, amplitude)
         u = símismo.discrepancy(detrend, phase)
         return u
-
-
-def coeff_agreement(linear, trend, poly):
-    kappa = {}
-    icc = {'same': {}, 'diff': {}}
-    for p in poly:
-        obs_l = np.asarray(linear['t_obs'][p])
-        sim_l = np.asarray(linear['t_sim'][p])
-
-        tf = ((obs_l == sim_l) & (obs_l == 0)) | (obs_l * sim_l > 0)
-        kappa.update({p: {'sign_bparam': 1, 'sign_slope': 1} if all(i for i in tf) else {'sign_bparam': 0.5,
-                                                                                         'sign_slope': 1} if tf[
-            0] else None})
-
-        if p in trend['t_sim']['same_patt']:
-            obs_bp = np.asarray(list(list(trend['t_obs'][p].values())[0]['bp_params'].values()))
-            sim_bp = np.asarray(list(list(trend['t_sim']['same_patt'][p].values())[0]['bp_params'].values()))
-            icc['same'][p] = ICC_rep_anova(np.asarray([obs_bp, sim_bp]).T)[0]
-        else:
-            obs_bp = np.asarray(list(list(trend['t_obs'][p].values())[0]['bp_params'].values()))
-            sim_bp = np.asarray(list(list(trend['t_sim']['diff_patt'][p].values())[0]['bp_params'].values()))
-            icc['diff'][p] = ICC_rep_anova(np.asarray([obs_bp, sim_bp]).T)[0]
-
-    return kappa, icc

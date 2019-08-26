@@ -1,9 +1,6 @@
 import numpy as np
 from tinamit.Calib.ej.cor_patrón import ori_valid, ori_calib
 
-guardar_class = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\class\\"
-guardar_class_rev = "D:\Thesis\pythonProject\localuse\Dt\Calib\cali_res\class_rev\\"
-
 guardar_original = "D:\Thesis\pythonProject\localuse\Dt\Calib\\cali_res\\original\\"
 guardar_reverse = "D:\Thesis\pythonProject\localuse\Dt\Calib\\cali_res\\reverse\\"
 
@@ -16,6 +13,8 @@ plot_abc = "D:\Thesis\pythonProject\localuse\Dt\Calib\plot\\abc\\"
 sim_dream = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\new\\dream\\"
 
 sim_abc = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\new\\fscabc\\"
+
+test_sim = "D:\Thesis\pythonProject\localuse\Dt\Calib\\simular\\new\\"
 
 
 def load_calib_info(method, type_sim, t_trend=True, calib=False, rev=False, egr_spotpy=False, obj_func=None,

@@ -1,4 +1,4 @@
-from tinamit.Calib.ej.ej_calib.info_calib import *
+# from tinamit.Calib.ej.ej_calib.info_calib import *
 from tinamit.Calib.ej.sens_análisis import gen_mod
 from tinamit.Análisis.Sens.muestr import gen_problema
 from tinamit.Calib.ej.info_paráms import calib_líms_paráms, calib_mapa_paráms
@@ -45,8 +45,8 @@ if __name__ == "__main__":
         #     _calib(reverse=True, tipo_proc='patrón', obj_func='AIC', guardar=guardar_abc+'aic_rev', método=m,
         #            guar_sim=sim_abc_rev)
         #
-        #     _calib(tipo_proc='multidim', obj_func='NSE', guardar=guardar_abc+'nse', método=m,
-        #            guar_sim=sim_abc_nse)
+            _calib(tipo_proc='multidim', obj_func='NSE', guardar=guardar_abc+'nse', método=m,
+                   guar_sim=test_sim)
         #
         #     _calib(reverse=True, tipo_proc='multidim', obj_func='NSE', guardar=guardar_abc+'nse_rev', método=m,
         #            guar_sim=sim_abc_nse_rev)
