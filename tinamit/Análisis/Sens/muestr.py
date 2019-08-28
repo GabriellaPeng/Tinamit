@@ -35,7 +35,7 @@ def muestrear_paráms(líms_paráms, método, mapa_paráms=None, ops_método=Non
     problema, líms_paráms_final = gen_problema(líms_paráms, mapa_paráms)
 
     if método == 'morris':
-        ops = {'N': 25, 'num_levels': 16}
+        ops = {'N': 25, 'num_levels': 8}
         ops.update(ops_método)
         mstr = morris.sample(problema, **ops)
 

@@ -1,8 +1,12 @@
+import platform
 import numpy as np
 from tinamit.Análisis.Calibs import _conv_xr
 from tinamit.Calib.ej.obs_patrón import read_obs_csv
 
-path = "C:\\Users\\umroot\\OneDrive - Concordia University - Canada\\gaby\\pp2_data\\calib\\"
+if platform.release() == '7':
+    path = "D:\Thesis\data\old\\"
+else:
+    path = "C:\\Users\\umroot\\OneDrive - Concordia University - Canada\\gaby\\pp2_data\\calib\\"
 calib = path +  "calib.csv"
 valid = path + 'valid.csv'
 

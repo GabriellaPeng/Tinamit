@@ -15,7 +15,6 @@ import pandas as pd
 import xarray as xr
 from dateutil.relativedelta import relativedelta as deltarelativo
 from lxml import etree as arbole
-from matplotlib import pyplot
 
 import tinamit.Geog.Geog as Geog
 from tinamit.Análisis.Calibs import CalibradorEc, CalibradorMod, _conv_xr

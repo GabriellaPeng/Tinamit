@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import seaborn as sns
@@ -569,6 +568,7 @@ def boxplot_like_loc(methods, res_path, save_plot, obj_func, prob_type='top'):
                 boxY.append(box.get_ydata()[j])
 
             box_coords = np.column_stack([boxX, boxY])
+            matplotlib.use('Agg')
             ax1.add_patch(Polygon(box_coords, facecolor=color[i]))
 
             # Now draw the median lines back over what we just filled in

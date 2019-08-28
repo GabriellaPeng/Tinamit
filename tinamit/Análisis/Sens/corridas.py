@@ -109,7 +109,7 @@ def simul_sens_por_grupo(mod, mstr_paráms, mapa_paráms, var_egr, t_final, tmñ
     )
 
 
-def simul_sens(mod, mstr_paráms, mapa_paráms, var_egr, t_final, guardar=True, índices_mstrs=None,
+def simul_sens(mod, mstr_paráms, mapa_paráms, var_egr, t_final, guardar=None, índices_mstrs=None,
                paralelo=None):
     if índices_mstrs is None:
         índices_mstrs = range(len(list(mstr_paráms.values())[0]))

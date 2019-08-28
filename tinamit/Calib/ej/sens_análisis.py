@@ -15,7 +15,6 @@ from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid
 from tinamit.Geog.Geog import _gen_clrbar_dic, _gen_d_mapacolores
 from tinamit.Calib.ej.soil_class import p_soil_class
 from tinamit.Calib.ej.info_paráms import mapa_paráms
-# from tinamit.Calib.ej.info_analr import *
 from tinamit.Geog.Geog import Geografía
 from tinamit.Conectado import Conectado
 from tinamit.Ejemplos.en.Ejemplo_SAHYSMOD.SAHYSMOD import Envoltura
@@ -28,7 +27,7 @@ def gen_mod():
     modelo = Conectado()
 
     # Establish SDM and Biofisical model paths. The Biofisical model path must point to the Python wrapper for the model
-    modelo.estab_mds('D:\Gaby\Tinamit\\tinamit\Ejemplos\en\Ejemplo_SAHYSMOD\\Vensim\\Tinamit_Rechna.vpm')
+    modelo.estab_mds('D:\Thesis\pythonProject\Tinamit\\tinamit\Ejemplos\en\Ejemplo_SAHYSMOD\Vensim\\Tinamit_Rechna.vpm')
 
     modelo.estab_bf(Envoltura)
     modelo.estab_conv_tiempo(mod_base='mds', conv=6)
@@ -145,7 +144,7 @@ def _read_dt_4_map(method, si=None, load_data=None, egr_path=None):
                                egr=behav_data, si='mu_star')['morris'][list(behav_data.keys())[0]][
             'mds_Watertable depth Tinamit']
 
-        ps = [0, 5, 10, 15, 20]
+        ps = [0, 4, 9, 14, 20]
 
         return {'pasos': pasos, 'means': means, 'behaviors': behaviors, 'no_ini': load_data['fited_behav'], 'ps': ps}
 
@@ -313,7 +312,7 @@ def verif_sens(método, tipo_egr, mapa_paráms, p_soil_class, si, dim=None, egr=
         egr = _integrate_egr(egr_arch, dim, si, mapa_paráms, tipo_egr)
 
     if tipo_egr == "forma" or tipo_egr == 'superposition':
-        final_sens = {método: {tipo_egr: {p_name: {gof_name: {bp_gof: {bp: {para: {f_name: np.asarray([f_val[id][i]
+        final_sens = {método: {tipo_egr: {p_name: {gof: {bp_gof: {bp: {para: {f_name: np.asarray([f_val[id][i]
                                                                                 for i, id in enumerate(p_soil_class)])
                                                                             for f_name, f_val in val.items()} if para in mapa_paráms else val
                                                                        for para, val in d_gof[si].items()}
@@ -451,34 +450,35 @@ def gen_alpha(fited_behav_arch, patt):
 
 def gen_row_col(behaviors, method):
     if method == 'Morris':
-        col_labels = [0, 5, 10, 15, 20, 'Mean']
+        col_ticks = [0, 5, 10, 15, 20, 'Mean']
     else:
-        col_labels = [0, 1, 2, 3, 4, 'Mean']
+        col_ticks = [0, 1, 2, 3, 4, 'Mean']
 
     col_l = []
+
     col_l.extend([f"{behav}_gof" for behav in behaviors])
-    col_labels.extend(sorted(col_l, key=lambda word: (word[0], word)))
+    col_ticks.extend(sorted(col_l, key=lambda word: (word[0], word)))
 
     col_l.extend([f"{behav}_{bpp}" for behav in behaviors for bpp in behaviors[behav]['bp_params']['Kaq']])
-    col_labels.extend(sorted([pt for pt in col_l if not pt.endswith('_gof')], key=lambda word: (word[0], word)))
+    col_ticks.extend(sorted([pt for pt in col_l if not pt.endswith('_gof')], key=lambda word: (word[0], word)))
 
     gof = [pt for pt in col_l if pt.endswith('_gof')]
     spp_gof = [pt for pt in col_l if pt.startswith('spp') and pt.endswith('_gof')]
     spp = [pt for pt in col_l if pt.startswith('spp')]
 
-    col = [f'n{i}' for i in range(1, 7)]
-    col.extend([f'S{i}' for i in range(1, len(col_l) - len(spp)+1)])
-    col.extend([f'D{i}' for i in range(1, len(spp)+1)])
+    abbr_col= [f'n{i}' for i in range(1, 7)]
+    abbr_col.extend([f'S{i}' for i in range(1, len(col_l) - len(spp)+1)])
+    abbr_col.extend([f'D{i}' for i in range(1, len(spp)+1)])
 
-    col_new = col[:6]
-    col_new.extend([f'a{i}' for i in range(1, len(gof)+1)])
-    col_new.extend([f'b{i}' for i in range(1, len(col_l) - len(gof) - len(spp) + len(spp_gof) +1)])
-    col_new.extend([f'c{i}' for i in range(1, len(spp) - len(spp_gof) + 1)])
+    short_col_tick = abbr_col[:6]
+    short_col_tick.extend([f'a{i}' for i in range(1, len(gof)+1)])
+    short_col_tick.extend([f'b{i}' for i in range(1, len(col_l) - len(gof) - len(spp) + len(spp_gof) +1)])
+    short_col_tick.extend([f'c{i}' for i in range(1, len(spp) - len(spp_gof) + 1)])
 
-    row = [p for p in behaviors['log']['bp_params']]
-    row_labels = ['Ptq', 'Ptr', 'Kaq', 'Peq', 'Pex', 'POH, Summer', 'POH, Winter', 'CTW', 'Dummy']
+    row_ticks = [p for p in behaviors['log']['bp_params']]
+    abbr_param = ['Ptq', 'Ptr', 'Kaq', 'Peq', 'Pex', 'POH, Summer', 'POH, Winter', 'CTW', 'Dummy']
 
-    return row_labels, col, col_labels, row, col_new
+    return abbr_param, abbr_col, col_ticks, row_ticks, short_col_tick
 
 
 def gen_geog_map(gaurd_arch, measure='paso_tiempo', patt=None, method='Morris', param=None, fst_cut=0.1, snd_cut=8,
@@ -544,199 +544,203 @@ def gen_geog_map(gaurd_arch, measure='paso_tiempo', patt=None, method='Morris', 
                      unid='% of sensitivity simulation data', path=gaurd_arch)
 
 
-def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si=None, cluster=False, cls=None):
+def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si=None, cluster=False, cls=None,  gof_type=['aic']):
     read_dt = _read_dt_4_map(method, si=si, load_data=load_data)
-    r_c = gen_row_col(read_dt['behaviors'], method)
 
-    data = np.empty([len(r_c[0]), len(r_c[4])])
+    for gof in gof_type:
+        abbr_param, abbr_col, col_ticks, row_ticks, short_col_tick = gen_row_col(read_dt['behaviors'][gof], method)
+        data = np.empty([len(abbr_param), len(short_col_tick)])
 
-    if rank_method == 'polygons':
-        for i in range(215):
-            # paso
+        if rank_method == 'polygons':
+            for i in range(215):
+                # paso
+                for prmp, d_paso in read_dt['pasos'].items():
+                    for p in read_dt['ps']:
+                        data[row_ticks.index(prmp), col_ticks.index(p)] = d_paso[f'paso_{p}'][i]
+
+                # mean
+                for prmm, m_aray in read_dt['means'].items():
+                    data[row_ticks.index(prmm), col_ticks.index('Mean')] = m_aray[i]
+
+                # behavior
+                for patt, d_bg in read_dt['behaviors'][gof].items():
+                    alpha = gen_alpha(read_dt['no_ini'], patt)
+                    for pbpp, bpp in d_bg['bp_params'].items():
+                        if Counter(alpha)[0] == 215 or pbpp == 'Ficticia':
+                            alpha = np.zeros([215])
+                        for bppm, va in bpp.items():
+                            if alpha[i] == 0 and patt != 'linear':
+                                data[row_ticks.index(pbpp), col_ticks.index(f'{patt}_{bppm}')] = 0
+                            else:
+                                data[row_ticks.index(pbpp), col_ticks.index(f'{patt}_{bppm}')] = va[i]
+                    for paic, aic in d_bg['gof'].items():
+                        if alpha[i] == 0 and patt != 'linear':
+                            data[row_ticks.index(paic), col_ticks.index(f'{patt}_gof')] = 0
+                        else:
+                            data[row_ticks.index(paic), col_ticks.index(f'{patt}_gof')] = aic[gof][i]
+
+                map_rank(row_labels=abbr_param, col_labels=abbr_col, data=np.round(data, 2),
+                         title=f'{method} Sensitivity Ranking Results', y_label='Parameters',
+                         archivo=rank_arch + f'poly{i + 1}', fst_cut=fst_cut, snd_cut=snd_cut, maxi=np.round(data, 2).max(),
+                         cbarlabel=f"{method} Sensitivity Index", cmap="magma_r")
+                print(f'finish the {i}-th poly, yeah!')
+
+        elif rank_method == 'count_poly':
+            for p in read_dt['ps']:
+                n_dt = {prmp: len(d_paso[f'paso_{p}'][np.where(d_paso[f'paso_{p}'] > fst_cut)[0]]) / 215 for prmp, d_paso in
+                        read_dt['pasos'].items()}
+                for prmp, v in n_dt.items():
+                    data[row_ticks.index(prmp), read_dt['ps'].index(p)] = v
+
+            n_dt2 = {prmm: len(m_aray[np.where(m_aray > fst_cut)[0]]) / 215 for prmm, m_aray in read_dt['means'].items()}
+            for prmm, m_aray in n_dt2.items():
+                data[row_ticks.index(prmm), col_ticks.index('Mean')] = m_aray
+
+            col_ind = []
+            for patt, d_bg in read_dt['behaviors'].items():
+                for pbpp, bpp in d_bg['bp_params'].items():
+                    for bppm in bpp:
+                        bpp[bppm] = np.asarray([0 if np.isnan(v) else v for v in bpp[bppm]])
+                        col_ind.append(col_ticks.index(f'{patt}_{bppm}'))
+                        data[row_ticks.index(pbpp), col_ticks.index(f'{patt}_{bppm}')] = \
+                            len(bpp[bppm][np.where(bpp[bppm] > fst_cut)[0]]) / 215
+                for paic, aic in d_bg['gof'].items():
+                    for a in aic:
+                        aic[a] = np.asarray([0 if np.isnan(v) else v for v in aic[a]])
+                    col_ind.append(col_ticks.index(f'{patt}_gof'))
+                    data[row_ticks.index(paic), col_ticks.index(f'{patt}_gof')] = \
+                        len(aic[gof][np.where(aic[gof] > fst_cut)[0]]) / 215
+
+            if len(np.where(np.isnan(data))[1]) != 0:
+                data[np.where(np.isnan(data))] = 0
+
+            map_rank(row_labels=abbr_param, col_labels=abbr_col, data=data,
+                     title=f"{method} Polygonal Sensitivity occurance", y_label='Parameters',
+                     archivo=rank_arch + f'{rank_method}', fst_cut=fst_cut, snd_cut=1, maxi=data.max(),
+                     cbarlabel=f"{method} % of polygonal occurance Rank", cmap="magma_r", bin=10, rank_method=rank_method)
+
+        elif rank_method == 'num_poly_rank':
+            for i, p in enumerate(read_dt['ps']):
+                dt = {prmp: max(d_paso[f'paso_{p}']) for prmp, d_paso in read_dt['pasos'].items()}
+                r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=False), 1)}
+                n_dt = {k: r[v] if v > fst_cut else 0 for k, v in dt.items()}
+                for prmp, v in n_dt.items():
+                    data[row_ticks.index(prmp), i] = v
+
+            dt2 = {prmm: max(m_aray) for prmm, m_aray in read_dt['means'].items()}
+            r2 = {key: rank for rank, key in enumerate(sorted(set(dt2.values()), reverse=False), 1)}
+            n_dt2 = {k: r2[v] if v > fst_cut else 0 for k, v in dt2.items()}
+            for prmm, m_aray in n_dt2.items():
+                data[row_ticks.index(prmm), col_ticks.index('Mean')] = m_aray
+            col_ind = []
+            for patt, d_bg in read_dt['behaviors'][gof].items():
+                for pbpp, bpp in d_bg['bp_params'].items():
+                    for bppm, va in bpp.items():
+                        col_ind.append(col_ticks.index(f'{patt}_{bppm}'))
+                        data[row_ticks.index(pbpp), col_ticks.index(f'{patt}_{bppm}')] = max(va)
+                for pg_f, g_f in d_bg['gof'].items():
+                    col_ind.append(col_ticks.index(f'{patt}_gof'))
+                    data[row_ticks.index(pg_f), col_ticks.index(f'{patt}_gof')] = max(g_f[gof])
+            lst = list(set(col_ind))
+            for c_i in lst:
+                dt = {para: data[:, c_i][i] for i, para in enumerate(row_ticks)}
+                r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=False), 1)}
+                n_dt = {k: r[v] if v > fst_cut else 0 for k, v in dt.items()}
+                for para, rk in n_dt.items():
+                    data[row_ticks.index(para), c_i] = rk
+
+            if len(np.where(np.isnan(data))[1]) != 0:
+                data[np.where(np.isnan(data))] = 0
+
+            if cluster is False:
+                map_rank(row_labels=abbr_param, col_labels=[i[1:] for i in short_col_tick], data=np.round(data, 2),
+                         title=None, y_label=None, dpi=1800,
+                         archivo=rank_arch + f'{gof}-{rank_method}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
+                         cbarlabel=None, cmap="magma_r", bin=data.max() + 1,
+                         rank_method=rank_method)
+            else:
+                points = np.transpose(data[:, 1:])
+                cluster = clustering(points, cls)
+                cls_col_n_od = ['N1']
+                cls_col_km = ['N1']
+                data_new_od = np.transpose(cluster['n_points'])
+                data_km = np.transpose(cluster['km_cls'])
+                for j in range(len(short_col_tick) - 1):
+                    cls_col_n_od.append(short_col_tick[cluster['new_order'][j] + 1])
+                    cls_col_km.append(short_col_tick[cluster['km_lst'][j] + 1])
+                data_new_od = np.concatenate((data[:, 0].reshape(9, 1), data_new_od), axis=1)
+                data_km = np.concatenate((data[:, 0].reshape(9, 1), data_km), axis=1)
+                for cl in range(cls):
+                    print(cl + 1, [col_ticks[i + 1] for i in cluster['d_km'][cl]])
+                    print(cl + 1, [short_col_tick[i + 1] for i in cluster['d_km'][cl]])
+
+                print('new order: ', [short_col_tick[i + 1] for i in cluster['new_order']])
+                print('new order: ', [col_ticks[i + 1] for i in cluster['new_order']])
+
+                map_rank(row_labels=abbr_param, col_labels=cls_col_n_od, data=np.round(data_new_od, 2),
+                         title=None, y_label='Parameters', dpi=1500,
+                         archivo=rank_arch + f'{gof}_clustering', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
+                         cbarlabel=None, cmap="magma_r", bin=data.max() + 1,
+                         rank_method=rank_method)
+                map_rank(row_labels=abbr_param, col_labels=cls_col_km, data=np.round(data_km, 2),
+                         title=f"{method} K-Mean-{cls} Clustering Map", y_label='Parameters', dpi=1500,
+                         archivo=rank_arch + f'k-mean-{gof}-{cls}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
+                         cbarlabel=f"{method} Sensitivity Rank", cmap="magma_r", bin=data.max() + 1,
+                         rank_method=rank_method)
+
+        elif rank_method == 'num_poly_rank_n':
+            data = np.empty([len(abbr_param), 12])
+            if method == 'morris':
+                read_dt_mo = _read_dt_4_map('Morris')
+                r_c_mo = gen_row_col(read_dt['behaviors'], 'Morris')
+            else:
+                read_dt_fa = _read_dt_4_map('Fast')
+                r_c_fa = gen_row_col(read_dt['behaviors'], 'Fast')
+
+            col = r_c_mo[1][:6] * 2
+            for p in read_dt_mo['ps']:
+                dt = {prmp: max(d_paso[f'paso_{p}']) for prmp, d_paso in read_dt_mo['pasos'].items()}
+                r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=True), 1)}
+                n_dt = {k: r[v] if v > 0.1 else 0 for k, v in dt.items()}
+                for prmp, v in n_dt.items():
+                    data[r_c_mo[3].index(prmp), r_c_mo[2].index(p)] = v
+            for p in read_dt_fa['ps']:
+                dt = {prmp: max(d_paso[f'paso_{p}']) for prmp, d_paso in read_dt_fa['pasos'].items()}
+                r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=True), 1)}
+                n_dt = {k: r[v] if v > 0.01 else 0 for k, v in dt.items()}
+                for prmp, v in n_dt.items():
+                    data[r_c_mo[3].index(prmp), r_c_fa[2].index(p) + 6] = v
+
+            if len(np.where(np.isnan(data))[1]) != 0:
+                data[np.where(np.isnan(data))] = 0
+
+            map_rank(row_labels=abbr_param, col_labels=col, data=np.round(data, 2),
+                     title=f"Sensitivity Ranking Map", y_label='Parameters',
+                     archivo=rank_arch + f'{rank_method}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
+                     cbarlabel=f"Sensitivity Ranking Order", cmap="magma_r", bin=data.max() + 1, rank_method=rank_method)
+
+        elif rank_method == 'total_poly':
             for prmp, d_paso in read_dt['pasos'].items():
-                for p in read_dt['ps']:
-                    data[r_c[3].index(prmp), r_c[2].index(p)] = d_paso[f'paso_{p}'][i]
-
+                for i, p in enumerate(read_dt['ps']):
+                    data[row_ticks.index(prmp), col_ticks.index(i)] = max(d_paso[f'paso_{p}'])
             # mean
             for prmm, m_aray in read_dt['means'].items():
-                data[r_c[3].index(prmm), r_c[2].index('Mean')] = m_aray[i]
+                data[row_ticks.index(prmm), col_ticks.index('Mean')] = max(m_aray)
 
             # behavior
-            for patt, d_bg in read_dt['behaviors'].items():
-                alpha = gen_alpha(read_dt['no_ini'], patt)
+            for patt, d_bg in read_dt['behaviors'][gof].items():
                 for pbpp, bpp in d_bg['bp_params'].items():
-                    if Counter(alpha)[0] == 215 or pbpp == 'Ficticia':
-                        alpha = np.zeros([215])
                     for bppm, va in bpp.items():
-                        if alpha[i] == 0 and patt != 'linear':
-                            data[r_c[3].index(pbpp), r_c[2].index(f'{patt}_{bppm}')] = 0
-                        else:
-                            data[r_c[3].index(pbpp), r_c[2].index(f'{patt}_{bppm}')] = va[i]
-                for paic, aic in d_bg['gof'].items():
-                    if alpha[i] == 0 and patt != 'linear':
-                        data[r_c[3].index(paic), r_c[2].index(f'{patt}_gof')] = 0
-                    else:
-                        data[r_c[3].index(paic), r_c[2].index(f'{patt}_gof')] = aic['aic'][i]
+                        data[row_ticks.index(pbpp), col_ticks.index(f'{patt}_{bppm}')] = max(va)
+                for pgof, g_f in d_bg['gof'].items():
+                    data[row_ticks.index(pgof), col_ticks.index(f'{patt}_gof')] = max(g_f[gof])
 
-            map_rank(row_labels=r_c[0], col_labels=r_c[1], data=np.round(data, 2),
-                     title=f'{method} Sensitivity Ranking Results', y_label='Parameters',
-                     archivo=rank_arch + f'poly{i + 1}', fst_cut=fst_cut, snd_cut=snd_cut, maxi=np.round(data, 2).max(),
+            if len(np.where(np.isnan(data))[1]) != 0:
+                data[np.where(np.isnan(data))] = 0
+            map_rank(row_labels=abbr_param, col_labels=short_col_tick, data=np.round(data, 2),
+                     title=f"{method} Sensitivity Ranking Results", y_label='Parameters',
+                     archivo=rank_arch + f'{gof}-{rank_method}', fst_cut=fst_cut, snd_cut=data.max(), maxi=np.round(data, 2).max(), bin=data.max() + 1,
                      cbarlabel=f"{method} Sensitivity Index", cmap="magma_r")
-            print(f'finish the {i}-th poly, yeah!')
-
-    elif rank_method == 'count_poly':
-        for p in read_dt['ps']:
-            n_dt = {prmp: len(d_paso[f'paso_{p}'][np.where(d_paso[f'paso_{p}'] > fst_cut)[0]]) / 215 for prmp, d_paso in
-                    read_dt['pasos'].items()}
-            for prmp, v in n_dt.items():
-                data[r_c[3].index(prmp), read_dt['ps'].index(p)] = v
-
-        n_dt2 = {prmm: len(m_aray[np.where(m_aray > fst_cut)[0]]) / 215 for prmm, m_aray in read_dt['means'].items()}
-        for prmm, m_aray in n_dt2.items():
-            data[r_c[3].index(prmm), r_c[2].index('Mean')] = m_aray
-
-        col_ind = []
-        for patt, d_bg in read_dt['behaviors'].items():
-            for pbpp, bpp in d_bg['bp_params'].items():
-                for bppm in bpp:
-                    bpp[bppm] = np.asarray([0 if np.isnan(v) else v for v in bpp[bppm]])
-                    col_ind.append(r_c[2].index(f'{patt}_{bppm}'))
-                    data[r_c[3].index(pbpp), r_c[2].index(f'{patt}_{bppm}')] = \
-                        len(bpp[bppm][np.where(bpp[bppm] > fst_cut)[0]]) / 215
-            for paic, aic in d_bg['gof'].items():
-                for a in aic:
-                    aic[a] = np.asarray([0 if np.isnan(v) else v for v in aic[a]])
-                col_ind.append(r_c[2].index(f'{patt}_gof'))
-                data[r_c[3].index(paic), r_c[2].index(f'{patt}_gof')] = \
-                    len(aic['aic'][np.where(aic['aic'] > fst_cut)[0]]) / 215
-
-        if len(np.where(np.isnan(data))[1]) != 0:
-            data[np.where(np.isnan(data))] = 0
-
-        map_rank(row_labels=r_c[0], col_labels=r_c[1], data=data,
-                 title=f"{method} Polygonal Sensitivity occurance", y_label='Parameters',
-                 archivo=rank_arch + f'{rank_method}', fst_cut=fst_cut, snd_cut=1, maxi=data.max(),
-                 cbarlabel=f"{method} % of polygonal occurance Rank", cmap="magma_r", bin=10, rank_method=rank_method)
-
-    elif rank_method == 'num_poly_rank':
-        for p in read_dt['ps']:
-            dt = {prmp: max(d_paso[f'paso_{p}']) for prmp, d_paso in read_dt['pasos'].items()}
-            r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=False), 1)}
-            n_dt = {k: r[v] if v > fst_cut else 0 for k, v in dt.items()}
-            for prmp, v in n_dt.items():
-                data[r_c[3].index(prmp), r_c[2].index(p)] = v
-
-        dt2 = {prmm: max(m_aray) for prmm, m_aray in read_dt['means'].items()}
-        r2 = {key: rank for rank, key in enumerate(sorted(set(dt2.values()), reverse=False), 1)}
-        n_dt2 = {k: r2[v] if v > fst_cut else 0 for k, v in dt2.items()}
-        for prmm, m_aray in n_dt2.items():
-            data[r_c[3].index(prmm), r_c[2].index('Mean')] = m_aray
-        col_ind = []
-        for patt, d_bg in read_dt['behaviors'].items():
-            for pbpp, bpp in d_bg['bp_params'].items():
-                for bppm, va in bpp.items():
-                    col_ind.append(r_c[2].index(f'{patt}_{bppm}'))
-                    data[r_c[3].index(pbpp), r_c[2].index(f'{patt}_{bppm}')] = max(va)
-            for paic, aic in d_bg['gof'].items():
-                col_ind.append(r_c[2].index(f'{patt}_gof'))
-                data[r_c[3].index(paic), r_c[2].index(f'{patt}_gof')] = max(aic['aic'])
-        lst = list(set(col_ind))
-        for c_i in lst:
-            dt = {para: data[:, c_i][i] for i, para in enumerate(r_c[3])}
-            r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=False), 1)}
-            n_dt = {k: r[v] if v > fst_cut else 0 for k, v in dt.items()}
-            for para, rk in n_dt.items():
-                data[r_c[3].index(para), c_i] = rk
-
-        if len(np.where(np.isnan(data))[1]) != 0:
-            data[np.where(np.isnan(data))] = 0
-
-        if cluster is False:
-            map_rank(row_labels=r_c[0], col_labels=[i[1:] for i in r_c[4]], data=np.round(data, 2),
-                     title=None, y_label=None, dpi=1800,
-                     archivo=rank_arch + f'{rank_method}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
-                     cbarlabel=None, cmap="magma_r", bin=data.max() + 1,
-                     rank_method=rank_method)
-        else:
-            points = np.transpose(data[:, 1:])
-            cluster = clustering(points, cls)
-            cls_col_n_od = ['N1']
-            cls_col_km = ['N1']
-            data_new_od = np.transpose(cluster['n_points'])
-            data_km = np.transpose(cluster['km_cls'])
-            for j in range(len(r_c[4]) - 1):
-                cls_col_n_od.append(r_c[4][cluster['new_order'][j] + 1])
-                cls_col_km.append(r_c[4][cluster['km_lst'][j] + 1])
-            data_new_od = np.concatenate((data[:, 0].reshape(9, 1), data_new_od), axis=1)
-            data_km = np.concatenate((data[:, 0].reshape(9, 1), data_km), axis=1)
-            for cl in range(cls):
-                print(cl + 1, [r_c[2][i + 1] for i in cluster['d_km'][cl]])
-                print(cl + 1, [r_c[4][i + 1] for i in cluster['d_km'][cl]])
-
-            print('new order: ', [r_c[4][i + 1] for i in cluster['new_order']])
-            print('new order: ', [r_c[2][i + 1] for i in cluster['new_order']])
-
-            map_rank(row_labels=r_c[0], col_labels=cls_col_n_od, data=np.round(data_new_od, 2),
-                     title=None, y_label=None, dpi=1000,
-                     archivo=rank_arch + 'new_order', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
-                     cbarlabel=None, cmap="magma_r", bin=data.max() + 1,
-                     rank_method=rank_method)
-            map_rank(row_labels=r_c[0], col_labels=cls_col_km, data=np.round(data_km, 2),
-                     title=f"{method} K-Mean-{cls} Clustering Map", y_label='Parameters', dpi=1000,
-                     archivo=rank_arch + f'k-mean-{cls}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
-                     cbarlabel=f"{method} Sensitivity Rank", cmap="magma_r", bin=data.max() + 1,
-                     rank_method=rank_method)
-
-    elif rank_method == 'num_poly_rank_n':
-        data = np.empty([len(r_c[0]), 12])
-        read_dt_mo = _read_dt_4_map('Morris')
-        read_dt_fa = _read_dt_4_map('Fast')
-        r_c_mo = gen_row_col(read_dt['behaviors'], 'Morris')
-        r_c_fa = gen_row_col(read_dt['behaviors'], 'Fast')
-        col = r_c_mo[1][:6] * 2
-        for p in read_dt_mo['ps']:
-            dt = {prmp: max(d_paso[f'paso_{p}']) for prmp, d_paso in read_dt_mo['pasos'].items()}
-            r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=True), 1)}
-            n_dt = {k: r[v] if v > 0.1 else 0 for k, v in dt.items()}
-            for prmp, v in n_dt.items():
-                data[r_c_mo[3].index(prmp), r_c_mo[2].index(p)] = v
-        for p in read_dt_fa['ps']:
-            dt = {prmp: max(d_paso[f'paso_{p}']) for prmp, d_paso in read_dt_fa['pasos'].items()}
-            r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=True), 1)}
-            n_dt = {k: r[v] if v > 0.01 else 0 for k, v in dt.items()}
-            for prmp, v in n_dt.items():
-                data[r_c_mo[3].index(prmp), r_c_fa[2].index(p) + 6] = v
-
-        if len(np.where(np.isnan(data))[1]) != 0:
-            data[np.where(np.isnan(data))] = 0
-
-        map_rank(row_labels=r_c[0], col_labels=col, data=np.round(data, 2),
-                 title=f"Sensitivity Ranking Map", y_label='Parameters',
-                 archivo=rank_arch + f'{rank_method}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
-                 cbarlabel=f"Sensitivity Ranking Order", cmap="magma_r", bin=data.max() + 1, rank_method=rank_method)
-
-    elif rank_method == 'total_poly':
-        for prmp, d_paso in read_dt['pasos'].items():
-            for p in read_dt['ps']:
-                data[r_c[3].index(prmp), r_c[2].index(p)] = max(d_paso[f'paso_{p}'])
-        # mean
-        for prmm, m_aray in read_dt['means'].items():
-            data[r_c[3].index(prmm), r_c[2].index('Mean')] = max(m_aray)
-
-        # behavior
-        for patt, d_bg in read_dt['behaviors'].items():
-            for pbpp, bpp in d_bg['bp_params'].items():
-                for bppm, va in bpp.items():
-                    data[r_c[3].index(pbpp), r_c[2].index(f'{patt}_{bppm}')] = max(va)
-            for paic, aic in d_bg['gof'].items():
-                data[r_c[3].index(paic), r_c[2].index(f'{patt}_gof')] = max(aic['aic'])
-
-        if len(np.where(np.isnan(data))[1]) != 0:
-            data[np.where(np.isnan(data))] = 0
-        map_rank(row_labels=r_c[0], col_labels=r_c[4], data=np.round(data, 2),
-                 title=f"{method} Sensitivity Ranking Results", y_label='Parameters',
-                 archivo=rank_arch + f'{rank_method}', fst_cut=fst_cut, snd_cut=snd_cut, maxi=np.round(data, 2).max(),
-                 cbarlabel=f"{method} Sensitivity Index", cmap="magma_r")
 
 
 def map_sens(geog, metodo, measure, para_name, data, fst_cut, path, snd_cut=None, alpha=None, behav=None, paso=None,
@@ -883,6 +887,11 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
     -------
 
     '''
+    fontsize1=1
+    fontsize2=2
+    fontsize3=2
+    fontsize_title=5
+
     if not ax:
         fig, ax = plt.subplots()
 
@@ -901,29 +910,30 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
         cax = divider.append_axes("bottom", size="10%", pad=0.05)
 
     if bin is not None:
-        if rank_method == 'num_poly_rank' or rank_method == 'num_poly_rank_n':
-            dic_c = _gen_d_mapacolores(
-                ['#e6fff2', '#b3ffd7', '#80ff80', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80', '#ff8080'],
-                maxi=None)
-        elif rank_method == 'count_poly':
+        if rank_method == 'count_poly':
             dic_c = _gen_d_mapacolores(
                 ['#e6fff2', '#b3ffd7', '#80ff9f', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80',
                  '#ff8080'],
                 maxi=None)
+        else:
+            dic_c = _gen_d_mapacolores(
+                ['#e6fff2', '#b3ffd7', '#80ff80', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80', '#ff8080'],
+                maxi=None)
 
         mapa_color = LinearSegmentedColormap('mapa_color', dic_c, N=bin)
         im = ax.imshow(data, mapa_color)
+
         if rank_method == 'count_poly':
             cbar = fig.colorbar(im, cax=cax, ticks=[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
             cbar.ax.set_yticklabels(
                 ['0', '~10%', '~20%', '~30%', '~40%', '~50%', '~60%', '~70%', '~80%', '~90%', '~100%'],
                 fontsize=5)
-        elif rank_method == 'num_poly_rank':
-            cbar = fig.colorbar(im, cax=cax, ticks=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orientation="horizontal")
-            cbar.ax.set_yticklabels(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], fontsize=6)
         elif rank_method == 'num_poly_rank_n':
             cbar = fig.colorbar(im, cax=cax, ticks=[0, 6, 5, 4, 3, 2, 1])
             cbar.ax.set_yticklabels(['0', '1', '2', '3', '4', '5', '6'], fontsize=6)
+        else:
+            cbar = fig.colorbar(im, cax=cax, ticks=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], orientation="horizontal")
+            cbar.ax.set_yticklabels(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], fontsize=5)
 
     else:
         if data.max() > snd_cut:
@@ -939,7 +949,7 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
             cbar = fig.colorbar(im, cax=cax, ticks=[data.min(), fst_cut, snd_cut - 0.1])
             cbar.ax.set_yticklabels(
                 ['0', f'Screnning threshold, {fst_cut}', f'+{snd_cut} High sensitivity zone'],
-                fontsize=3)
+                fontsize=fontsize1)
 
         elif fst_cut < data.max() < snd_cut:
             data[np.where(data < fst_cut)] = 0 - maxi * 0.1
@@ -951,7 +961,7 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
             cbar = fig.colorbar(im, cax=cax, ticks=[data.min(), fst_cut, data.max()])
             # cbar = ax.figure.colorbar(im, ax=cax, ticks=[0, fst_cut, data.max()], **cbar_kw)
             cbar.ax.set_yticklabels(['0', f'Screnning threshold, {fst_cut}', f'maximum val, {np.round(data.max(), 3)}'],
-                                    fontsize=3)
+                                    fontsize=fontsize1)
 
         elif data.max() < fst_cut:
             dic_c = _gen_clrbar_dic(fst_cut=None, snd_cut=None, maxi=maxi, first_set=clr_bar_dic['green'],
@@ -960,10 +970,10 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
             im = ax.imshow(data, mapa_color)
             cbar = fig.colorbar(im, cax=cax, ticks=[0, data.max()])
             # cbar = ax.figure.colorbar(im, ax=cax, ticks=[0, data.max()], **cbar_kw)
-            cbar.ax.set_yticklabels(['0', f'maximum val, {data.max()}'], fontsize=3)
+            cbar.ax.set_yticklabels(['0', f'maximum val, {data.max()}'], fontsize=fontsize1)
 
     if cbarlabel is not None:
-        cbar.ax.set_ylabel(cbarlabel, rotation=0, va="bottom", fontsize=7)  # fontsize=15)
+        cbar.ax.set_ylabel(cbarlabel, rotation=90, va="bottom", fontsize=fontsize2)  # fontsize=15)
     ax.tick_params(width=0.1)  # (width=1)
     cbar.ax.tick_params(width=0.1)  # (width=1) #(width=0.1)
 
@@ -975,14 +985,14 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
         ax.set_xticklabels(col_labels, fontsize=10)
         ax.set_yticklabels(row_labels, fontsize=10)
     else:
-        ax.set_xticklabels(col_labels, fontsize=4)
-        ax.set_yticklabels(row_labels, fontsize=4)
+        ax.set_xticklabels(col_labels, fontsize=fontsize3) #4
+        ax.set_yticklabels(row_labels, fontsize=fontsize3)
 
     # Let the horizontal axes labeling appear on top.
     ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
 
     # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=-30, ha="right",
+    plt.setp(ax.get_xticklabels(), rotation=-90, ha="right",
              rotation_mode="anchor")
 
     # Turn spines off and create white grid.
@@ -991,7 +1001,7 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
 
     ax.set_xticks(np.arange(data.shape[1] + 1) - .5, minor=True)
     ax.set_yticks(np.arange(data.shape[0] + 1) - .5, minor=True)
-    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.5)
+    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.2)
     ax.tick_params(which="minor", bottom=False, left=False)
 
     def func(x, pos):
@@ -1078,9 +1088,9 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
     #     "{:.2f}".format(data).replace("0.", ".").replace("0.00", "")))
     # Loop over data dimensions and create text annotations.
     if title is not None:
-        ax.set_title(title, fontsize=10, y=1.5)  # fontsize=20, y=1.1)
+        ax.set_title(title, fontsize=fontsize_title, y=1.5)  # fontsize=20, y=1.1)
     if y_label is not None:
-        ax.set_ylabel(y_label, fontsize=10)  # fontsize=20)
+        ax.set_ylabel(y_label, fontsize=fontsize2)  # fontsize=20)
 
     fig.tight_layout(h_pad=1)
     fig.savefig(archivo, dpi=dpi)
