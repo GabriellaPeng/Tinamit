@@ -3,8 +3,8 @@ import os
 from copy import deepcopy
 
 import numpy as np
-from SALib.sample import morris
-from SALib.sample import fast_sampler
+# from SALib.sample import morris
+# from SALib.sample import fast_sampler
 
 from tinamit.config import _
 
