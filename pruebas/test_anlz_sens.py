@@ -1,7 +1,6 @@
 import os
 import shutil
 import unittest
-import numpy as np
 import numpy.testing as npt
 
 from pruebas.recursos.BF.prueba_forma import *

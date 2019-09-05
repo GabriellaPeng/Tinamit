@@ -99,5 +99,6 @@ if __name__ == "__main__":
 
     # final plot
     load_data = {egr: np.load(guardar+f'{egr}.npy').tolist() for egr in ['paso_tiempo_egr', 'promedio_egr', 'behav_pattern_egr', 'fited_behav']}
-    gen_rank_map(guardar+'map\\', 'morris', 0.1, 8, 'total_poly', load_data=load_data, cluster=True, cls=6, gof_type=['aic', 'mic'])
+    gen_rank_map(guardar+'map\\', 'morris', 0.1, 8, 'num_poly_rank', load_data=load_data, cluster=True, cls=6, gof_type=['aic', 'mic'])
 
+#num_poly_rank, total_poly

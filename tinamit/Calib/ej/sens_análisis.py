@@ -2,8 +2,10 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 
 from collections import Counter
+
 from sklearn.cluster import KMeans
 
 import scipy.cluster.hierarchy as sch
@@ -449,7 +451,7 @@ def gen_alpha(fited_behav_arch, patt):
 
 
 def gen_row_col(behaviors, method):
-    if method == 'Morris':
+    if method == 'morris':
         col_ticks = [0, 5, 10, 15, 20, 'Mean']
     else:
         col_ticks = [0, 1, 2, 3, 4, 'Mean']
@@ -632,6 +634,7 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si
             n_dt2 = {k: r2[v] if v > fst_cut else 0 for k, v in dt2.items()}
             for prmm, m_aray in n_dt2.items():
                 data[row_ticks.index(prmm), col_ticks.index('Mean')] = m_aray
+
             col_ind = []
             for patt, d_bg in read_dt['behaviors'][gof].items():
                 for pbpp, bpp in d_bg['bp_params'].items():
@@ -642,6 +645,7 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si
                     col_ind.append(col_ticks.index(f'{patt}_gof'))
                     data[row_ticks.index(pg_f), col_ticks.index(f'{patt}_gof')] = max(g_f[gof])
             lst = list(set(col_ind))
+
             for c_i in lst:
                 dt = {para: data[:, c_i][i] for i, para in enumerate(row_ticks)}
                 r = {key: rank for rank, key in enumerate(sorted(set(dt.values()), reverse=False), 1)}
@@ -665,6 +669,7 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si
                 cls_col_km = ['N1']
                 data_new_od = np.transpose(cluster['n_points'])
                 data_km = np.transpose(cluster['km_cls'])
+
                 for j in range(len(short_col_tick) - 1):
                     cls_col_n_od.append(short_col_tick[cluster['new_order'][j] + 1])
                     cls_col_km.append(short_col_tick[cluster['km_lst'][j] + 1])
@@ -678,14 +683,14 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si
                 print('new order: ', [col_ticks[i + 1] for i in cluster['new_order']])
 
                 map_rank(row_labels=abbr_param, col_labels=cls_col_n_od, data=np.round(data_new_od, 2),
-                         title=None, y_label='Parameters', dpi=1500,
+                         title=None, y_label='Parameters', dpi=500,
                          archivo=rank_arch + f'{gof}_clustering', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
                          cbarlabel=None, cmap="magma_r", bin=data.max() + 1,
                          rank_method=rank_method)
                 map_rank(row_labels=abbr_param, col_labels=cls_col_km, data=np.round(data_km, 2),
-                         title=f"{method} K-Mean-{cls} Clustering Map", y_label='Parameters', dpi=1500,
+                         title=f"{method.capitalize()} K-Mean-{cls} Clustering Map", y_label='Parameters', dpi=500,
                          archivo=rank_arch + f'k-mean-{gof}-{cls}', fst_cut=1, snd_cut=data.max(), maxi=data.max(),
-                         cbarlabel=f"{method} Sensitivity Rank", cmap="magma_r", bin=data.max() + 1,
+                         cbarlabel=f"{method.capitalize()} Sensitivity Rank", cmap="magma_r", bin=data.max() + 1,
                          rank_method=rank_method)
 
         elif rank_method == 'num_poly_rank_n':
@@ -722,7 +727,7 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si
         elif rank_method == 'total_poly':
             for prmp, d_paso in read_dt['pasos'].items():
                 for i, p in enumerate(read_dt['ps']):
-                    data[row_ticks.index(prmp), col_ticks.index(i)] = max(d_paso[f'paso_{p}'])
+                    data[row_ticks.index(prmp), i] = max(d_paso[f'paso_{p}'])
             # mean
             for prmm, m_aray in read_dt['means'].items():
                 data[row_ticks.index(prmm), col_ticks.index('Mean')] = max(m_aray)
@@ -738,9 +743,16 @@ def gen_rank_map(rank_arch, method, fst_cut, snd_cut, rank_method, load_data, si
             if len(np.where(np.isnan(data))[1]) != 0:
                 data[np.where(np.isnan(data))] = 0
             map_rank(row_labels=abbr_param, col_labels=short_col_tick, data=np.round(data, 2),
-                     title=f"{method} Sensitivity Ranking Results", y_label='Parameters',
-                     archivo=rank_arch + f'{gof}-{rank_method}', fst_cut=fst_cut, snd_cut=data.max(), maxi=np.round(data, 2).max(), bin=data.max() + 1,
-                     cbarlabel=f"{method} Sensitivity Index", cmap="magma_r")
+                     title=None, y_label='Parameters',
+                     archivo=rank_arch + f'{gof}-{rank_method}', fst_cut=1, snd_cut=data.max(),
+                     maxi=np.round(data, 2).max(), #bin=data.max() + 1,
+                     cmap="magma_r", dpi=1500, cbarlabel=None)  # f"{method} Sensitivity Index")
+
+            # map_rank(row_labels=r_c[0], col_labels=r_c[4], data=np.round(data, 2),
+            #          title=f"{method} Sensitivity Ranking Results", y_label='Parameters',
+            #          archivo=rank_arch + f'{rank_method}', fst_cut=fst_cut, snd_cut=snd_cut,
+            #          maxi=np.round(data, 2).max(),
+            #          cbarlabel=f"{method} Sensitivity Index", cmap="magma_r")
 
 
 def map_sens(geog, metodo, measure, para_name, data, fst_cut, path, snd_cut=None, alpha=None, behav=None, paso=None,
@@ -893,15 +905,10 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
     fontsize_title=5
 
     if not ax:
-        fig, ax = plt.subplots()
-
+        fig, ax = plt.subplots() ###
     # clr_bar_dic = {'green': ['#e6fff2', '#80ffbf', '#33ff99', '#00cc66', '#006633'],
     #                'blue': ['#80dfff', '#00bfff', '#1ac6ff', '#00ace6', '#007399'],
     #                'red': ['#ff8000', '#ff8c1a', '#ff8000']}
-
-    clr_bar_dic = {'green': ['#e6fff2', '#b3ffd9'],
-                   'blue': ['#80ff9f', '#80ff80', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80', '#ff8080'],
-                   'red': ['#ff0000', '#ff0000']}
 
     divider = make_axes_locatable(ax)
     if cbarlabel is not None:
@@ -911,14 +918,16 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
 
     if bin is not None:
         if rank_method == 'count_poly':
-            dic_c = _gen_d_mapacolores(
-                ['#e6fff2', '#b3ffd7', '#80ff9f', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80',
-                 '#ff8080'],
-                maxi=None)
+            dic_c = sns.color_palette("OrRd", len(row_labels))
+            # dic_c = _gen_d_mapacolores(
+            #     ['#e6fff2', '#b3ffd7', '#80ff9f', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80',
+            #      '#ff8080'],
+            #     maxi=None)
         else:
-            dic_c = _gen_d_mapacolores(
-                ['#e6fff2', '#b3ffd7', '#80ff80', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80', '#ff8080'],
-                maxi=None)
+            dic_c = sns.color_palette("OrRd", len(row_labels))
+            # dic_c = _gen_d_mapacolores(
+            #     ['#e6fff2', '#b3ffd7', '#80ff80', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80', '#ff8080'],
+            #     maxi=None)
 
         mapa_color = LinearSegmentedColormap('mapa_color', dic_c, N=bin)
         im = ax.imshow(data, mapa_color)
@@ -936,6 +945,10 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
             cbar.ax.set_yticklabels(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], fontsize=5)
 
     else:
+        clr_bar_dic = {'green': ['#e6fff2', '#b3ffd9'],
+                       'blue': ['#80ff9f', '#80ff80', '#9fff80', '#bfff80', '#dfff80', '#ffff80', '#ffdf80', '#ff8080'],
+                       'red': ['#ff0000', '#ff0000']}
+
         if data.max() > snd_cut:
             data[np.where(data > snd_cut)] = snd_cut + 0.1
             data[np.where(data < fst_cut)] = 0 - snd_cut * 0.1
