@@ -4,6 +4,8 @@ import math
 import os
 import pickle
 import re
+from datetime import datetime
+from xarray import Dataset
 from copy import deepcopy as copiar_profundo
 from multiprocessing import Pool as Reserva
 from warnings import warn as avisar
@@ -13,13 +15,13 @@ import pandas as pd
 import xarray as xr
 from dateutil.relativedelta import relativedelta as deltarelativo
 from lxml import etree as arbole
+from matplotlib import pyplot
 
 import tinamit.Geog.Geog as Geog
-from tinamit.Análisis.Calibs import CalibradorEc, CalibradorMod
-from tinamit.Análisis.Datos import obt_fecha_ft, gen_SuperBD, jsonificar, numpyficar, SuperBD
+from tinamit.Análisis.Calibs import CalibradorEc, CalibradorMod, _conv_xr
+from tinamit.Análisis.Datos import obt_fecha_ft, gen_SuperBD, jsonificar, numpyficar, SuperBD, BDtexto
 from tinamit.Análisis.Sens.muestr import muestrear_paráms
 from tinamit.Análisis.Valids import validar_resultados
-from tinamit.Análisis.sintaxis import Ecuación
 from tinamit.Unidades.conv import convertir
 from tinamit.config import _, obt_val_config
 from tinamit.cositas import detectar_codif, valid_nombre_arch, guardar_json, cargar_json
@@ -247,9 +249,10 @@ class Modelo(object):
 
             if isinstance(t_final, int):
                 n_pasos = int(math.ceil(t_final / paso))
-                t_final = t_inic + deltarelativo(
-                    **{dic_trad_tiempo[unid_ref_tiempo]: n_pasos}
-                )  # type: ft.date
+                t_final = t_final
+                # t_final = t_inic + deltarelativo(
+                #     **{dic_trad_tiempo[unid_ref_tiempo]: n_pasos}
+                # )  # type: ft.date
             else:
                 if t_inic >= t_final:
                     t_inic, t_final = t_final, t_inic
@@ -259,14 +262,15 @@ class Modelo(object):
                     plazo = dlt.years + (not dlt.months == dlt.days == 0)
                 elif unid_ref_tiempo == 'mes':
                     dlt = deltarelativo(t_final, t_inic)
-                    plazo = dlt.years * 12 + dlt.months + (not dlt.days == 0)
+                    plazo = int(
+                        dlt.years * 12 / símismo._conv_unid_tiempo['factor'] + dlt.months + (not dlt.days == 0) + 1)
                 elif unid_ref_tiempo == 'día':
                     plazo = (t_final - t_inic).days
                 else:
                     raise ValueError
                 n_pasos = math.ceil(plazo / paso)
 
-            delta_fecha = deltarelativo(**{dic_trad_tiempo[unid_ref_tiempo]: paso})
+            delta_fecha = deltarelativo(**{dic_trad_tiempo[unid_ref_tiempo]: símismo._conv_unid_tiempo['factor']})
 
         else:
             raise TypeError(_('t_inic debe ser fecha o número entero, no "{}".').format(type(t_inic)))
@@ -1771,7 +1775,8 @@ class Modelo(object):
 
         símismo.calibs.update(dic)
 
-    def calibrar(símismo, paráms, bd, líms_paráms=None, vars_obs=None, n_iter=500, método='mle'):
+    def calibrar(símismo, paráms, bd, líms_paráms=None, vars_obs=None, n_iter=10, método='mle', tipo_proc=None,
+                 mapa_paráms=None, final_líms_paráms=None, guardar=False, guar_sim=None, egr_spotpy=None, warmup_period=None, cls=None, obj_func=None):
 
         if vars_obs is None:
             l_vars = None
@@ -1782,43 +1787,60 @@ class Modelo(object):
 
         if líms_paráms is None:
             líms_paráms = {}
-        for p in paráms:
-            if p not in líms_paráms:
-                líms_paráms[p] = símismo.obt_lims_var(p)
-        líms_paráms = {ll: v for ll, v in líms_paráms.items() if ll in paráms}
+        if final_líms_paráms is None:
+            for p in paráms:
+                if p not in líms_paráms:
+                    líms_paráms[p] = símismo.obt_lims_var(p)
+            líms_paráms = {ll: v for ll, v in líms_paráms.items() if ll in paráms}
 
         if isinstance(bd, dict) and all(isinstance(v, xr.Dataset) for v in bd.values()):
             for lg in bd:
                 calibrador = CalibradorMod(símismo)
                 d_calibs = calibrador.calibrar(
-                    paráms=paráms, bd=bd[lg], líms_paráms=líms_paráms, método=método, n_iter=n_iter, vars_obs=l_vars
-                )
+                    paráms=paráms, bd=bd[lg], líms_paráms=líms_paráms, método=método, n_iter=n_iter, vars_obs=l_vars,
+                    tipo_proc=tipo_proc, guardar=guardar, guar_sim=guar_sim, cls=cls, obj_func=obj_func)
                 for var in d_calibs:
                     if var not in símismo.calibs:
                         símismo.calibs[var] = {}
                     símismo.calibs[var][lg] = d_calibs[var]
-
         else:
             calibrador = CalibradorMod(símismo)
             d_calibs = calibrador.calibrar(
-                paráms=paráms, bd=bd, líms_paráms=líms_paráms, método=método, n_iter=n_iter, vars_obs=l_vars
-            )
+                paráms=paráms, bd=bd, líms_paráms=líms_paráms, método=método, n_iter=n_iter, vars_obs=l_vars,
+                tipo_proc=tipo_proc, mapa_paráms=mapa_paráms, final_líms_paráms=final_líms_paráms,
+                guardar=guardar, guar_sim=guar_sim, egr_spotpy=egr_spotpy, warmup_period=warmup_period, cls=cls, obj_func=obj_func)
             símismo.calibs.update(d_calibs)
 
-    def validar(símismo, bd, var=None, t_final=None, corresp_vars=None):
+    def validar(símismo, bd, var=None, corresp_vars=None, tipo_proc=None, guardar=False,
+                lg=None, paralelo=False, valid_sim=False, n_sim=None, save_plot=None, warmup_period=None, obj_func=None, método=None):
+        if var is None:
+            var = None
+        elif isinstance(var, str):
+            var = [var]
+
         if isinstance(bd, dict) and all(isinstance(v, xr.Dataset) for v in bd.values()):
             res = {}
             for lg in bd:
                 bd_lg = gen_SuperBD(bd[lg])
-                vld = símismo._validar(bd=bd_lg, var=var, t_final=t_final, corresp_vars=corresp_vars, lg=lg)
+                vld = símismo._validar(bd=bd_lg, var=var, corresp_vars=corresp_vars, lg=lg,
+                                       tipo_proc=None, guardar=guardar,
+                                       paralelo=paralelo, valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot,
+                                       warmup_period=warmup_period, obj_func=obj_func, método=método)
                 res[lg] = vld
             res['éxito'] = all(d['éxito'] for d in res.values())
             return res
-        else:
-            bd = gen_SuperBD(bd)
-            return símismo._validar(bd=bd, var=var, t_final=t_final, corresp_vars=corresp_vars)
 
-    def _validar(símismo, bd, var, t_final, corresp_vars, lg=None):
+        elif isinstance(bd, xr.Dataset):
+            bd = gen_SuperBD(bd)
+        else:
+            bd = _conv_xr(bd, var, warmup_period=warmup_period)
+
+        return símismo._validar(bd=bd, var=var,corresp_vars=corresp_vars, tipo_proc=tipo_proc,
+                                guardar=guardar, lg=lg, paralelo=paralelo, obj_func=obj_func,
+                                valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot, warmup_period=warmup_period, método=método)
+
+    def _validar(símismo, bd, var, corresp_vars, tipo_proc, guardar, lg, paralelo,
+                 valid_sim, n_sim, save_plot, warmup_period, obj_func, método):
         if corresp_vars is None:
             corresp_vars = {}
 
@@ -1830,22 +1852,83 @@ class Modelo(object):
         else:
             l_vars = var
         l_vars = [símismo.valid_var(v) for v in l_vars]
-        obs = bd.obt_datos(l_vars)[l_vars]
-        if t_final is None:
-            t_final = len(obs['n']) - 1
-        if lg is None:
-            d_vals_prms = {p: d_p['dist'] for p, d_p in símismo.calibs.items()}
+
+        if not isinstance(bd, xr.Dataset) and tipo_proc is not None:
+            obs = bd.obt_datos(l_vars, interpolar=False)[l_vars]
+        elif tipo_proc is None:
+            obs = bd.obt_datos(l_vars)[l_vars]
         else:
-            d_vals_prms = {p: d_p[lg]['dist'] for p, d_p in símismo.calibs.items()}
-        n_vals = len(list(d_vals_prms.values())[0])
-        vals_inic = [{p: v[í] for p, v in d_vals_prms.items()} for í in range(n_vals)]
-        res_simul = símismo.simular_grupo(
-            t_final, vals_inic=vals_inic, vars_interés=l_vars, combinar=False, paralelo=False
-        )
+            obs = bd
 
-        matrs_simul = {vr: np.array([d[vr].values for d in res_simul.values()]) for vr in l_vars}
+        if n_sim is None:
+            if not lg:
+                d_vals_prms = {p: d_p['dist'] for p, d_p in símismo.calibs.items()}  # {'A': ndaray(100), 'B'...}
+            else:
+                d_vals_prms = {p: d_p['dist'] for p, d_p in lg.items() if isinstance(d_p, dict)}  # {'A': ndaray(100), 'B'...}
 
-        resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul)
+            n_vals = len(list(d_vals_prms.values())[0])
+
+            if tipo_proc is None:
+                all_res = np.empty(
+                    [n_vals, *np.asarray([Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{0}')))[vr].values
+                                          for vr in l_vars][0]).shape])  # 29*42*215
+                for i, v in enumerate(lg['buenas']):
+                    all_res[i, :] = np.asarray(
+                        [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{v}')))[vr].values
+                         for vr in l_vars][0])
+
+            vals_inic = [{p: v[í] for p, v in d_vals_prms.items()} for í in range(n_vals)]
+            start_time = datetime.now().strftime("%H:%M:%S")
+            FMT = '%H:%M:%S'
+            print(f"Inicializando simulación de validación {start_time} ")
+            res_simul = símismo.simular_grupo(
+                t_final=len(obs['n']), vals_inic=vals_inic, vars_interés=l_vars, combinar=False, paralelo=paralelo)
+            print(
+                f"La simulación de validación transcurre {datetime.strptime(datetime.now().strftime('%H:%M:%S'),FMT) - datetime.strptime(start_time, FMT)}")
+
+            all_res = np.array([[d[vr].values for d in res_simul.values()] for vr in l_vars])[0]  # 5*62*215
+            matrs_simul = {vr: np.array([d[vr].values for d in res_simul.values()]) for vr in l_vars}
+
+        else:
+            if n_sim is not None:
+                all_res = np.empty([n_sim[1] - n_sim[0], *obs[l_vars[0]].values.shape])  # 500*39*19
+
+                for i in range(n_sim[1] - n_sim[0]):
+                    if warmup_period is not None:
+                        all_res[i, :] = np.asarray(
+                            [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
+                                 l_vars[0]].values[warmup_period:, j - 1] for j in obs['x0'].values]).T
+                    else:
+                        all_res[i, :] = np.asarray(
+                            [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
+                                 l_vars[0]].values[:, j - 1] for j in obs['x0'].values]).T
+
+            # top_res = all_res[lg['buenas']]
+            # top_prob = lg['prob'][lg['buenas']]
+            # top_wt = np.asarray([(p - np.min(top_prob)) / np.ptp(top_prob) for p in top_prob])
+            # all_wt = np.asarray([(p - np.min(lg['prob'])) / np.ptp(lg['prob']) for p in lg['prob']])
+
+            # mu_res, mdn_res = np.zeros([1, *top_res.shape[1:]]), np.zeros([1, *top_res.shape[1:]])
+
+            # for p in range(len(obs['x0'])):
+            #     for t in range(len(obs['n'])):
+            #         data = top_res[:, t, p]
+            #         mu_res[:, t, p] = np.mean(data)
+            #         mdn_res[:, t, p] = np.median(data)
+
+                    # weighted_res[:, t, p] = np.average(all_res[:, t, p], weights=all_wt)
+                    # weighted_sem[:, t, p] = np.sqrt(np.average((all_res[:, t, p]-weighted_res[:, t, p][0])**2, weights=all_wt)/len(all_res))
+            matrs_simul = {vr: {'all_res': all_res, 'prob': lg['prob']} for vr in l_vars}
+
+        if tipo_proc is None:
+            resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)
+        else:
+            resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc, save_plot=save_plot,
+                                            obj_func=obj_func, método=método)
+
+        # if guardar and tipo_proc is not None:
+        #     np.save(guardar+f"_{tipo_proc.lower()}", resultados)
+
         return resultados
 
     @classmethod
