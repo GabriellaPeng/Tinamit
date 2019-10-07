@@ -11,11 +11,11 @@ from pandas.plotting import autocorrelation_plot
 from sklearn.metrics import cohen_kappa_score
 
 from tinamit.Análisis.Calibs import aplastar, patro_proces, gen_gof
-from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova, theil_inequal
+from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova, theil_inequal, compute_rmse
 from tinamit.Calib.ej.ej_calib.calib_análisis import plot_top_sim_obs, plot_save
 
 
-def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=None, obj_func=None, método=None, weight=True, percentile=True):
+def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=None):
     """
 
     patt_vec['bp_params']
@@ -31,6 +31,7 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
     egr = {vr: {} for vr in l_vars}
 
     if tipo_proc is None:
+        tol=0.65
         mu_obs = obs.mean()
         sg_obs = obs.std()
         mu_obs_matr = mu_obs.to_array().values  # array[3] for ['y'] should be --> array[1]
@@ -63,19 +64,65 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
         obs_norm = {va: obs_norm.T for va in l_vars}  # [nparray[39*18]]
 
         proc_sim = { }
-        for type_res, res in matrs_simul[l_vars[0]].items():
-            if type_res[-3:] == 'res':
-                proc_sim[f'{type_res[:-3]}sim'] = (res - mu_obs_matr) / sg_obs_matr
+        for type, res in matrs_simul[l_vars[0]].items():
+            if type[-3:] == 'res':
+                proc_sim[f'{type[:-3]}sim'] = (res - mu_obs_matr) / sg_obs_matr
+            else:
+                proc_sim[type] = res
 
         for vr in l_vars:
-            '''this version only generate likes for numerical/behaviourial procedures'''
+            proc_sim = generate_weighted_simulations(proc_sim["all_sim"], proc_sim["prob"], obj_func)
+
+            egr[vr] = {tipo_proc: {obj_func: { }}}
+            egr[vr][tipo_proc][obj_func] = proc_sim
+            if tipo_proc == 'multidim':
+                egr[vr][tipo_proc][obj_func].update({'likes': gen_gof('multidim', sim=proc_sim["weighted_sim"], eval=obs_norm[vr],
+                                                                valid=True, obj_func=obj_func, método=método)})
+            type_sim = 'top_weighted_sim'
+            sim_val = proc_sim[type_sim]
+            if tipo_proc == 'multidim':
+                obs_linear = patro_proces(tipo_proc, npoly, obs_norm[vr], valid=True)[1]
+                sim_linear = patro_proces(tipo_proc, npoly, sim_val, valid=True)[1]
+                egr[vr][tipo_proc][obj_func].update({type_sim: {['trend_agreement']: coeff_agreement(obs_linear, sim_linear, None, None, npoly,
+                                                          sim_val, obs_norm[vr])}})
+
+            elif tipo_proc == 'patrón':
+                best_behaviors, obs_linear, obs_shps = patro_proces('patrón', npoly, obs_norm[vr], valid=True,
+                                                                    obj_func=obj_func)
+
+                likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
+                                                      obj_func=obj_func, método=método)  # 19*41
+
+                egr[vr][tipo_proc][obj_func].update({type_sim:{'likes': likes}})
+
+                egr[vr][tipo_proc][obj_func][type_sim].update({'trend_agreement': coeff_agreement(best_behaviors,
+                    obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_norm[vr])})
+            # if percentile is not None:
+            #     percentiles, proc_sim = confidence_interval(proc_sim["all_sim"], obs_norm[vr], proc_sim, obj_func)
+            #     egr[vr]['CI'] = percentiles
+            #     mask = proc_prob_data(proc_sim['prob'], obj_func, top_N=len(proc_sim['prob'])*0.2)[1]
+            #     plot_top_sim_obs(proc_sim["all_sim"][mask], obs_norm[vr], npoly, save_plot, proc_sim, percentiles,
+            #                      l_poly=[36, 71, 175])  ##TODO: percentiles are different.
+            # else:
+            #     proc_sim = confidence_interval(proc_sim["all_sim"], obs_norm[vr], proc_sim, obj_func)[1]
+            #
+            # egr[vr][tipo_proc] = {obj_func: {ts: {'trend_agreement': {}} for ts in proc_sim}} #all weighted_sim + top_weighted_sim
+            #
             # if tipo_proc == 'multidim':
             #     egr[vr][tipo_proc][obj_func]['likes'] = gen_gof('multidim', sim=proc_sim["weighted_sim"], eval=obs_norm[vr],
             #                                                     valid=True, obj_func=obj_func, método=método)
             #
-            # for type_sim, sim_val in proc_sim.items(): # TODO: need to add weighted_sim
+            # egr[vr]['Theil'] = {type_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc', 'mse']} for type_sim in
+            #                     proc_sim}
+            #
+            # for type_sim, sim_val in proc_sim.items():
+            #     for p in range(len(npoly)):
+            #         egr[vr]['Theil'][type_sim]['mse'][p], egr[vr]['Theil'][type_sim]['Um'][p], egr[vr]['Theil'][type_sim]['Us'][p], \
+            #         egr[vr]['Theil'][type_sim]['Uc'][
+            #             p] = theil_inequal(sim_val[:, p], obs_norm[vr][:, p])
+            #
             #     if tipo_proc == 'multidim':
-            #         for behvior_gof in ['aic', 'mic']: # TODO: still use Kappa in linear slope comparison
+            #         for behvior_gof in ['aic', 'mic']:
             #             obs_linear = patro_proces(tipo_proc, npoly, obs_norm[vr], valid=True, obj_func=behvior_gof)[1]
             #             sim_linear = patro_proces(tipo_proc, npoly, sim_val, valid=True, obj_func=behvior_gof)[1]
             #             egr[vr][tipo_proc][obj_func][type_sim]['trend_agreement'].update(
@@ -94,49 +141,6 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
             #         egr[vr][tipo_proc][obj_func][type_sim]['trend_agreement'] = coeff_agreement(
             #             obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_norm[vr])
 
-            if percentile is not None:
-                percentiles, proc_sim = confidence_interval(proc_sim["all_sim"], obs_norm[vr], proc_sim, obj_func)
-                egr[vr]['CI'] = percentiles
-                plot_top_sim_obs(proc_sim["top_sim"], obs_norm[vr], npoly, save_plot, proc_sim, pcentl=percentiles,
-                                 l_poly=[36, 71, 175])  ##TODO: percentiles are different.
-            else:
-                proc_sim = confidence_interval(proc_sim["all_sim"], obs_norm[vr], proc_sim, obj_func)[1]
-
-            egr[vr][tipo_proc] = {obj_func: {ts: {'trend_agreement': {}} for ts in proc_sim}} #all weighted_sim + top_weighted_sim
-
-            if tipo_proc == 'multidim':
-                egr[vr][tipo_proc][obj_func]['likes'] = gen_gof('multidim', sim=proc_sim["weighted_sim"], eval=obs_norm[vr],
-                                                                valid=True, obj_func=obj_func, método=método)
-
-            egr[vr]['Theil'] = {type_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc', 'mse']} for type_sim in
-                                proc_sim}
-
-            for type_sim, sim_val in proc_sim.items():
-                for p in range(len(npoly)):
-                    egr[vr]['Theil'][type_sim]['mse'][p], egr[vr]['Theil'][type_sim]['Um'][p], egr[vr]['Theil'][type_sim]['Us'][p], \
-                    egr[vr]['Theil'][type_sim]['Uc'][
-                        p] = theil_inequal(sim_val[:, p], obs_norm[vr][:, p])
-
-                if tipo_proc == 'multidim':
-                    for behvior_gof in ['aic', 'mic']:
-                        obs_linear = patro_proces(tipo_proc, npoly, obs_norm[vr], valid=True, obj_func=behvior_gof)[1]
-                        sim_linear = patro_proces(tipo_proc, npoly, sim_val, valid=True, obj_func=behvior_gof)[1]
-                        egr[vr][tipo_proc][obj_func][type_sim]['trend_agreement'].update(
-                            {behvior_gof: coeff_agreement(obs_linear, sim_linear, None, None, npoly,
-                                                                  sim_val, obs_norm[vr])})
-
-                elif tipo_proc == 'patrón':
-                    best_behaviors, obs_linear, obs_shps = patro_proces('patrón', npoly, obs_norm[vr], valid=True,
-                                                                        obj_func=obj_func)
-
-                    likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
-                                                          obj_func=obj_func, método=método)  # 19*41
-
-                    egr[vr][tipo_proc][obj_func][type_sim].update({'likes': likes})
-
-                    egr[vr][tipo_proc][obj_func][type_sim]['trend_agreement'] = coeff_agreement(
-                        obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_norm[vr])
-
             # egr[vr]['proc_sim'] = {'all_sim': all_sim, 'obs_norm': obs_norm[vr]}
             # egr[vr]['proc_sim'].update({**proc_sim})
             # for sim in ['top_sim']:#, 'all_sim']:
@@ -147,31 +151,33 @@ def validar_resultados(obs, matrs_simul, tol=0.65, tipo_proc=None, save_plot=Non
             #         egr[vr][tipo_proc][obj_func][sim][n] = gen_gof('patrón', sim=vars()[sim][n],
             #                                                              eval=best_behaviors, valid=False,
             #                                                              obj_func=obj_func, valid_like=True, método=método)
-
-            return egr
+                return egr
 
 
 def proc_prob_data(probs, objective_function, top_N=None):
     if objective_function == 'aic':
         if np.nanmean(probs) > 0:
-            prob = np.sort(np.negative(probs))
-    else:
-        prob = np.sort(probs)
+            probs = np.negative(probs)
 
-    if top_N is not None:
+    if top_N is None:
+        return np.sort(probs)
+    else:
         if objective_function == 'rmse' or objective_function == 'aic':
             prob = np.sort(probs)[:top_N]
             mask = (probs <= np.max(prob))
+            if np.sum(mask) != len(prob):
+                prob = np.sort(probs)[:np.sum(mask)]
+
         elif objective_function == 'nse' or objective_function == 'mic':
             prob = np.sort(probs)[top_N:]
             mask = (probs >= np.max(prob))
+            if np.sum(mask) != len(prob):
+                prob = np.sort(probs)[:np.sum(mask)]
         else:
             ValueError(f"{objective_function} is not considering now, please add")
 
         return prob, mask
 
-    else:
-        return prob
 
 
 def _valid(obs, sim, comport=True, tipo_proc=None):  # obs63, sim 50*63//100*21*6
@@ -268,7 +274,7 @@ def _anlz_tendencia(obs, sim):
     return correctos.mean()
 
 
-def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, obs_dt):
+def coeff_agreement(best_behaviors, obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, obs_dt):
     # kp<0, the agreement is worsen than random, kp=1 perfect agreement. ICC=1 perfect!
     mine = minepy.MINE()
     def _kp(sim, obs):
@@ -287,34 +293,30 @@ def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, o
         (1, 1) if all(round(v, 2) > 0 for v in t_v) else (0, 0) if all(round(v, 2) <= 0 for v in t_v) else (
             0, 1) if (round(t_v[0], 2) <= 0) & (round(t_v[1], 2) > 0) else (1, 0) for t_v in
         [(obs_linear[p]['bp_params']['slope'], sim_linear[p]['bp_params']['slope']) for p in poly]]
+    no_true_sign = sum([(i[0] == i[1]) for i in l_sign])
+    trend_agreement = {'slope': {'data': l_sign, 'no_same_signs': np.round(no_true_sign/len(l_sign), 2)}, 'points_diff': {}}
+     #'slp_kp': cohen_kappa_score([i[0] for i in l_sign], [i[1] for i in l_sign]), 'slp_sign': l_sign}
 
-    trend_agreement = {'slope': {}, 'slope_intercept': {}, 'bp': {}, 'points_diff': {}}
-    trend_agreement['slope'] = {#'slp_kp': cohen_kappa_score([i[0] for i in l_sign], [i[1] for i in l_sign]),
-                                'slp_sign': l_sign}
+    # trend_agreement['slope'].update({'sign_kendal': estad.kendalltau([i[0] for i in l_sign], [i[1] for i in l_sign])[0]})
+    # trend_agreement['slope'].update({'sign_spearmanr':estad.spearmanr([i[0] for i in l_sign], [i[1] for i in l_sign])[0]})
+    # obs_bp_slp =[obs_linear[p]['bp_params']['slope'] for p in poly]
+    # sim_bp_slp = [sim_linear[p]['bp_params']['slope'] for p in poly ]
 
-    trend_agreement['slope'].update({'sign_kendal': estad.kendalltau([i[0] for i in l_sign], [i[1] for i in l_sign])[0]})
-    trend_agreement['slope'].update({'sign_spearmanr':estad.spearmanr([i[0] for i in l_sign], [i[1] for i in l_sign])[0]})
+    # trend_agreement['slope'].update({'bp_kendal': estad.kendalltau(obs_bp_slp, sim_bp_slp)[0]})
+    # trend_agreement['slope'].update({'bp_spearmanr':  estad.spearmanr(obs_bp_slp, sim_bp_slp)[0]})
 
-    obs_bp_slp =[obs_linear[p]['bp_params']['slope'] for p in poly]
-    sim_bp_slp = [sim_linear[p]['bp_params']['slope'] for p in poly ]
+    # l_sim = [bp for l_bp in [list(sim_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
+    # l_obs = [bp for l_bp in [list(obs_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
 
+    # trend_agreement['slope_intercept'].update({'bp_icc': ICC_rep_anova(np.asarray([l_obs, l_sim]).T)[0]})
+    # trend_agreement['slope_intercept'].update({'bp_kendall': estad.kendalltau(l_obs, l_sim)[0]})
+    # trend_agreement['slope_intercept'].update({'bp_spearmanr': estad.spearmanr(l_obs, l_sim)[0]})
+    # mine.compute_score(l_obs, l_sim)
+    # trend_agreement['slope_intercept'].update({'bp_mic':  mine.mic()})
 
-    trend_agreement['slope'].update({'bp_kendal': estad.kendalltau(obs_bp_slp, sim_bp_slp)[0]})
-
-    trend_agreement['slope'].update({'bp_spearmanr':  estad.spearmanr(obs_bp_slp, sim_bp_slp)[0]})
-
-    l_sim = [bp for l_bp in [list(sim_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
-    l_obs = [bp for l_bp in [list(obs_linear[p]['bp_params'].values()) for p in poly] for bp in l_bp]
-
-    trend_agreement['slope_intercept'].update({'bp_icc': ICC_rep_anova(np.asarray([l_obs, l_sim]).T)[0]})
-    trend_agreement['slope_intercept'].update({'bp_kendall': estad.kendalltau(l_obs, l_sim)[0]})
-    trend_agreement['slope_intercept'].update({'bp_spearmanr': estad.spearmanr(l_obs, l_sim)[0]})
-    mine.compute_score(l_obs, l_sim)
-    trend_agreement['slope_intercept'].update({'bp_mic':  mine.mic()})
-
-    kpx, kpy = _kp(l_sim, l_obs)
-    trend_agreement['slope_intercept'].update({'sign_kendall': estad.kendalltau(kpx, kpy)[0]})
-    trend_agreement['slope_intercept'].update({'sign_spearmanr': estad.spearmanr(kpx, kpy)[0]})
+    # kpx, kpy = _kp(l_sim, l_obs)
+    # trend_agreement['slope_intercept'].update({'sign_kendall': estad.kendalltau(kpx, kpy)[0]})
+    # trend_agreement['slope_intercept'].update({'sign_spearmanr': estad.spearmanr(kpx, kpy)[0]})
 
     # trend_agreement['slope_intercept'].update({'kappa': cohen_kappa_score(_kp(l_sim, l_obs))})
     # 1why kp<icc ? 2.why slp_kp<0 # as kp is qualitative and quantitative
@@ -325,23 +327,28 @@ def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, o
     # trend_agreement['slope_intercept']['poly_icc'] = {}
     # for p in range(len(poly)):
     #     trend_agreement['slope_intercept']['poly_icc'].update({p: ICC_rep_anova(np.asarray([l_o[p], l_s[p]]).T)[0]})
-    if sim_shps is not None:
-        b_sim = [bp for l_bp in [list(sim_shps[p]['bp_params'].values()) for p in poly] for bp in l_bp]
-        b_obs = [bp for l_bp in [list(obs_shps[p]['bp_params'].values()) for p in poly] for bp in l_bp]
+    # if sim_shps is not None:
+    #     b_sim = [bp for l_bp in [list(sim_shps[p]['bp_params'].values()) for p in poly] for bp in l_bp]
+    #     b_obs = [bp for l_bp in [list(obs_shps[p]['bp_params'].values()) for p in poly] for bp in l_bp]
 
-        trend_agreement['bp'] = {'icc': ICC_rep_anova(np.asarray([b_obs, b_sim]).T)[0]}
-        mine.compute_score(b_obs, b_sim)
-        trend_agreement['bp'].update({'mic': mine.mic()})
-
-    for stat in ['icc', 'mic']:
-        trend_agreement['points_diff'][stat] = np.zeros([len(poly)])
-
-    for p in range(len(poly)):
-        wt_sim = np.delete(sim_val[:, p], np.where(np.isnan(obs_dt[:, p])))
-        obs = obs_dt[:, p][np.where(~np.isnan(obs_dt[:, p]))]
-        trend_agreement['points_diff']['icc'][p] = ICC_rep_anova(np.asarray([wt_sim, obs]).T)[0]
-        mine.compute_score(wt_sim, obs)
-        trend_agreement['points_diff']['mic'][p] = mine.mic()  # data*2
+    #     trend_agreement['bp'] = {'icc': ICC_rep_anova(np.asarray([b_obs, b_sim]).T)[0]}
+    #     mine.compute_score(b_obs, b_sim)
+    #     trend_agreement['bp'].update({'mic': mine.mic()})
+    #
+    # for stat in ['icc', 'mic']:
+    #     trend_agreement['points_diff'][stat] = np.zeros([len(poly)])
+    x_data = np.arange(1, len(obs_dt)+1)
+    trend_agreement['points_diff']['rmse'] = [ ]
+    for i, (p, v) in enumerate(best_behaviors.items()):
+        y_pred = predict(x_data, obs_shps[p]['bp_params'], v)
+        y_obs = predict(x_data, sim_shps[p]['bp_params'], v)
+        trend_agreement['points_diff']['rmse'].append(compute_rmse(y_pred, y_obs))
+    # for p in range(len(poly)):
+    #     wt_sim = np.delete(sim_val[:, p], np.where(np.isnan(obs_dt[:, p])))
+    #     obs = obs_dt[:, p][np.where(~np.isnan(obs_dt[:, p]))]
+    #     trend_agreement['points_diff']['icc'][p] = ICC_rep_anova(np.asarray([wt_sim, obs]).T)[0]
+    #     mine.compute_score(wt_sim, obs)
+    #     trend_agreement['points_diff']['mic'][p] = mine.mic()  # data*2
     # trend_agreement['bp'].update({'kappa': _kp(b_sim, b_obs)})
     # trend_agreement['bp'].update({'kendal': estad.kendalltau(b_sim, b_obs)[0]})
     # b_s = [list(sim_shps[p]['bp_params'].values()) for p in poly]
@@ -355,7 +362,7 @@ def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, o
     return trend_agreement
 
 
-def _ci(data, confidence=0.95, probs=None, counts=False):
+def _ci(data, obs_data, confidence=0.95, probs=None, counts=None):
     if not isinstance(data, np.ndarray):
         a = 1.0 * np.array(data)
     else:
@@ -371,12 +378,14 @@ def _ci(data, confidence=0.95, probs=None, counts=False):
         se = np.sqrt(np.average((a - m) ** 2, weights=weight) / len(weight))
 
     h = se * estad.t.ppf((1 + confidence) / 2., n - 1)
-
     intervals = [m - h, m + h]
 
-    if counts:
-        return len(data[(data>intervals[0]) & (data<intervals[1])]), m
+    if counts is not None:
+        if intervals[0]<=obs_data<=intervals[1]:
+            counts.append(1)
 
+        if probs is not None:
+            return m
     else:
         return intervals
 
@@ -384,24 +393,24 @@ def _ci(data, confidence=0.95, probs=None, counts=False):
 def confidence_interval(sim_norm, obs_norm, proc_sim, objective_function, top_percentage=0.2):  # 495*41*19, 41*19
     poly = obs_norm.shape[1]
     time = len(obs_norm)
-    all_N = len(sim_norm)*time
-    top_N = int(np.ceil(all_N*top_percentage))
+    top_N = int(np.ceil(len(sim_norm)*top_percentage))
 
-    mean_pcentl, all_wt_pcentl, top_wt_pcentl = np.zeros([10, poly], dtype=float), np.zeros([10, poly], dtype=float), np.zeros([10, poly], dtype=float)
+    cis, no_ci= np.arange(0.05, 1.05, 0.05), len(np.arange(0.05, 1.05, 0.05))
+    mean_pcentl, all_wt_pcentl, top_wt_pcentl, = np.zeros([no_ci, poly]), np.zeros([no_ci, poly]), np.zeros([no_ci, poly])
 
     all_prob = proc_prob_data(proc_sim['prob'], objective_function)
     top_prob, mask = proc_prob_data(proc_sim['prob'], objective_function, top_N)
 
-    proc_sim.update({'weighted_sim': np.zeros(time), 'top_weighted_sim': np.zeros(time)})
+    proc_sim.update({'weighted_sim': np.zeros([time, poly]), 'top_weighted_sim': np.zeros([time, poly])})
     for p in range(poly):
-        for i, ci in enumerate(np.arange(0.1, 1.1, 0.1)):
+        for i, ci in enumerate(cis):
             mean_count, all_wt_count, top_wt_count = [], [], []
             for t in range(time):
-                mean_count = _ci(sim_norm[:, t, p], ci, weight=None, counts=True)
-                all_wt_count, weighted_mu = _ci(sim_norm[:, t, p], ci, all_prob, counts=True)
-                top_wt_count, top_weighted_mu = _ci(sim_norm[:, t, p][mask], ci, top_prob, counts=True)
-                proc_sim['weighted_sim'][t], proc_sim['top_weighted_sim'][t]= weighted_mu, top_weighted_mu
-            mean_pcentl[i, p], all_wt_pcentl[i, p], top_wt_pcentl= np.sum(mean_count)/all_N, np.sum(all_wt_count)/all_N,  np.sum(top_wt_count)/top_N
+                _ci(sim_norm[:, t, p], obs_norm[t, p], ci, probs=None, counts=mean_count)
+                proc_sim['weighted_sim'][t, p] = _ci(sim_norm[:, t, p], obs_norm[t, p], ci, all_prob, counts=all_wt_count)
+                proc_sim['top_weighted_sim'][t, p] = _ci(sim_norm[:, t, p][mask], obs_norm[t, p], ci, top_prob, counts=top_wt_count)
+
+            mean_pcentl[i, p], all_wt_pcentl[i, p], top_wt_pcentl[i, p] = len(mean_count) / time, len(all_wt_count) / time, len(top_wt_count) / time
     # pcentl = np.zeros_like(obs_norm, dtype=float)
     # for t in range(len(obs_norm)):
     #     for p in range(obs_norm.shape[1]):
@@ -410,7 +419,28 @@ def confidence_interval(sim_norm, obs_norm, proc_sim, objective_function, top_pe
     #         else:
     #             perc = estad.percentileofscore(sim_norm[:, t, p], obs_norm[t, p], kind='weak')
     #             pcentl[t, p] = abs(0.5 - perc / 100) * 2
-    return [mean_pcentl, all_wt_pcentl, top_wt_pcentl], proc_sim
+    return {'mean': mean_pcentl, 'all_wt': all_wt_pcentl, 'top_wt': top_wt_pcentl}, proc_sim
+
+
+def generate_weighted_simulations(all_simulations, likes, objective_function, top_percentage=0.2):
+    len_time =  all_simulations.shape[1]
+    no_polys = all_simulations.shape[2]
+    top_N = int(np.ceil(len(all_simulations)*top_percentage))
+
+    top_likes, mask = proc_prob_data(likes, objective_function, top_N)
+
+    processed_simulations = {'weighted_sim': np.zeros([len_time, no_polys]), 'top_weighted_sim': np.zeros([len_time, no_polys]), 'all_res': all_simulations, 'weighted_res': all_simulations[mask]}
+
+    all_weights = np.asarray([(p - np.min(likes)) / np.ptp(likes) for p in likes])
+    top_weights = np.asarray([(p - np.min(likes)) / np.ptp(likes) for p in top_likes])
+
+    for p in range(no_polys):
+        for t in range(len_time):
+            a = all_simulations[:, t, p]
+            processed_simulations['top_weighted_sim'][t, p] =  np.average(a[mask], weights=top_weights)
+            processed_simulations['weighted_sim'][t, p] = np.average(a, weights=all_weights)
+
+    return processed_simulations
 
 
 class PatrónValidTest(object):

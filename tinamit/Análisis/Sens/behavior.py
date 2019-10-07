@@ -117,8 +117,7 @@ def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_typ
     # norm_y_data = y_data
 
     if tipo_egr == 'linear':
-        params = optimize.minimize(f_opt, x0=[1, 1], method='Nelder-Mead',
-                                   args=(x_data, norm_y_data, linear)).x
+        params = optimize.minimize(f_opt, x0=[1, 1], method='Nelder-Mead', args=(x_data, norm_y_data, linear)).x
         b_params = {'bp_params': de_standardize(params, y_data, tipo_egr)}
         # slope, intercept, r_value, p_value, std_err = estad.linregress(x_data, norm_y_data)
         # b_params = {'bp_params': de_standardize(np.asarray([slope, intercept]), y_data, tipo_egr)}

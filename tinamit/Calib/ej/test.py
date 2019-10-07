@@ -24,7 +24,9 @@ import numpy as np
 
 # fc['bic'](1, 2)
 # vars()['aic'](1, 2)
+from tinamit.Análisis.Valids import proc_prob_data
 from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid, vr
+from tinamit.Calib.ej.ej_calib.calib_análisis import plot_top_sim_obs
 from tinamit.Calib.ej.sens_análisis import criteria_stat
 
 # f_simul= np.load("D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\f_simul_550.npy").tolist()
@@ -51,9 +53,15 @@ from tinamit.Calib.ej.sens_análisis import criteria_stat
 
 
 path = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\"
+proc_sim = np.load(path + 'fscabc\\valid_aic.npy').tolist()
+obs_norm = np.load(path + 'valid_obs_norm.npy').tolist()
+percentile = np.load(path + 'ci.npy').tolist()
+npoly = np.load(path + 'npoly.npy').tolist()
 
-# for m in ['fscabc', 'dream', 'demcz', ]
-# ori=np.load(path+"valid_aic_rev_patrón.npy").tolist()
-
+mask = proc_prob_data(proc_sim['prob'], 'aic', top_N=100)[1]
+plot_top_sim_obs(proc_sim["all_sim"][mask], obs_norm[vr], npoly, path, proc_sim, percentile,
+                 l_poly=[36, 71, 175])
 
 print()
+
+

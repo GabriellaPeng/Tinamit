@@ -73,7 +73,7 @@ def compute_patron(npoly, norm_obs=None, valid=False, obj_func='aic', tipo_proc=
         for i, p in enumerate(npoly):
             print(f"Behavior Detecting of Polygon {p} !")
             if valid and tipo_proc=='multidim':
-                linear[p] = simple_shape(np.arange(1, len(data[:, i])+1),data[:, i], 'linear', gof=True, gof_type=[obj_func])
+                linear[p] = simple_shape(np.arange(1, len(data[:, i])+1),data[:, i], 'linear', gof=False)
             elif valid and tipo_proc=='patrón':
                 re = superposition(np.arange(1, len(data[:, i])+1), data[:, i], gof_type=[obj_func])[0]
                 best_behaviors[p] = find_best_behavior(re, gof_type=[obj_func])[0][obj_func][0] # TODO 'aic or not
