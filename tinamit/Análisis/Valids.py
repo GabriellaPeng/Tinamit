@@ -1,9 +1,7 @@
-import math
 
 import numpy as np
 import minepy
-from collections import defaultdict
-from bisect import bisect_left
+
 import scipy.optimize as optim
 import scipy.stats as estad
 import matplotlib.pyplot as plt
@@ -74,17 +72,25 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
             proc_sim = generate_weighted_simulations(proc_sim["all_sim"], proc_sim["prob"], obj_func)
 
             egr[vr] = {tipo_proc: {obj_func: { }}}
-            egr[vr][tipo_proc][obj_func] = proc_sim
-            if tipo_proc == 'multidim':
-                egr[vr][tipo_proc][obj_func].update({'likes': gen_gof('multidim', sim=proc_sim["weighted_sim"], eval=obs_norm[vr],
-                                                                valid=True, obj_func=obj_func, método=método)})
+            egr[vr][tipo_proc][obj_func].update(proc_sim)
+
             type_sim = 'top_weighted_sim'
             sim_val = proc_sim[type_sim]
+
             if tipo_proc == 'multidim':
+                likes =  gen_gof('multidim', sim=sim_val, eval=obs_norm[vr], valid=True, obj_func=obj_func, método=método)
+                egr[vr][tipo_proc][obj_func].update({'likes': {type_sim: likes}})
+
+                top_likes = np.zeros([len(proc_sim['weighted_res']), len(npoly)])
+                for i, sim_v in enumerate(proc_sim['weighted_res']):
+                    top_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_norm[vr], valid=True, obj_func=obj_func, método=método)
+
+                egr[vr][tipo_proc][obj_func]['likes'].update({'weighted_res': top_likes})
+
                 obs_linear = patro_proces(tipo_proc, npoly, obs_norm[vr], valid=True)[1]
                 sim_linear = patro_proces(tipo_proc, npoly, sim_val, valid=True)[1]
-                egr[vr][tipo_proc][obj_func].update({type_sim: {['trend_agreement']: coeff_agreement(obs_linear, sim_linear, None, None, npoly,
-                                                          sim_val, obs_norm[vr])}})
+                egr[vr][tipo_proc][obj_func].update({'trend_agreement': coeff_agreement(obs_linear, sim_linear, None, None, npoly,
+                                                          sim_val, obs_norm[vr])})
 
             elif tipo_proc == 'patrón':
                 best_behaviors, obs_linear, obs_shps = patro_proces('patrón', npoly, obs_norm[vr], valid=True,
@@ -92,11 +98,17 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
 
                 likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
                                                       obj_func=obj_func, método=método)  # 19*41
+                top_wt_res = proc_sim['weighted_res']
+                top_likes = np.zeros([len(top_wt_res), len(npoly)])
 
-                egr[vr][tipo_proc][obj_func].update({type_sim:{'likes': likes}})
+                for i, sim_v in enumerate(top_wt_res):
+                    top_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False, obj_func=obj_func, valid_like=True, método=método)
 
-                egr[vr][tipo_proc][obj_func][type_sim].update({'trend_agreement': coeff_agreement(best_behaviors,
-                    obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_norm[vr])})
+                egr[vr][tipo_proc][obj_func].update({'likes': {'weighted_res': top_likes}})
+                egr[vr][tipo_proc][obj_func]['likes'].update({type_sim: likes})
+
+                egr[vr][tipo_proc][obj_func].update({'trend_agreement': coeff_agreement(
+                    obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_norm[vr], best_behaviors)})
             # if percentile is not None:
             #     percentiles, proc_sim = confidence_interval(proc_sim["all_sim"], obs_norm[vr], proc_sim, obj_func)
             #     egr[vr]['CI'] = percentiles
@@ -151,7 +163,7 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
             #         egr[vr][tipo_proc][obj_func][sim][n] = gen_gof('patrón', sim=vars()[sim][n],
             #                                                              eval=best_behaviors, valid=False,
             #                                                              obj_func=obj_func, valid_like=True, método=método)
-                return egr
+            return egr
 
 
 def proc_prob_data(probs, objective_function, top_N=None):
@@ -169,8 +181,8 @@ def proc_prob_data(probs, objective_function, top_N=None):
                 prob = np.sort(probs)[:np.sum(mask)]
 
         elif objective_function == 'nse' or objective_function == 'mic':
-            prob = np.sort(probs)[top_N:]
-            mask = (probs >= np.max(prob))
+            prob = np.sort(probs)[-top_N:]
+            mask = (probs >= np.min(prob))
             if np.sum(mask) != len(prob):
                 prob = np.sort(probs)[:np.sum(mask)]
         else:
@@ -274,7 +286,7 @@ def _anlz_tendencia(obs, sim):
     return correctos.mean()
 
 
-def coeff_agreement(best_behaviors, obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, obs_dt):
+def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, obs_dt, best_behaviors=None):
     # kp<0, the agreement is worsen than random, kp=1 perfect agreement. ICC=1 perfect!
     mine = minepy.MINE()
     def _kp(sim, obs):
@@ -337,12 +349,13 @@ def coeff_agreement(best_behaviors, obs_linear, sim_linear, obs_shps, sim_shps, 
     #
     # for stat in ['icc', 'mic']:
     #     trend_agreement['points_diff'][stat] = np.zeros([len(poly)])
-    x_data = np.arange(1, len(obs_dt)+1)
-    trend_agreement['points_diff']['rmse'] = [ ]
-    for i, (p, v) in enumerate(best_behaviors.items()):
-        y_pred = predict(x_data, obs_shps[p]['bp_params'], v)
-        y_obs = predict(x_data, sim_shps[p]['bp_params'], v)
-        trend_agreement['points_diff']['rmse'].append(compute_rmse(y_pred, y_obs))
+    if best_behaviors is not None:
+        x_data = np.arange(1, len(obs_dt)+1)
+        trend_agreement['points_diff']['rmse'] = [ ]
+        for i, (p, v) in enumerate(best_behaviors.items()):
+            y_pred = predict(x_data, obs_shps[p]['bp_params'], v)
+            y_obs = predict(x_data, sim_shps[p]['bp_params'], v)
+            trend_agreement['points_diff']['rmse'].append(compute_rmse(y_pred, y_obs))
     # for p in range(len(poly)):
     #     wt_sim = np.delete(sim_val[:, p], np.where(np.isnan(obs_dt[:, p])))
     #     obs = obs_dt[:, p][np.where(~np.isnan(obs_dt[:, p]))]
