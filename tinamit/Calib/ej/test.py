@@ -27,14 +27,14 @@ import numpy as np
 from tinamit.Análisis.Valids import proc_prob_data
 from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid, vr
 from tinamit.Calib.ej.ej_calib.calib_análisis import plot_top_sim_obs
-from tinamit.Calib.ej.sens_análisis import criteria_stat
+from tinamit.Calib.ej.sens_análisis import criteria_stat, hist_conv
 
 # f_simul= np.load("D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\f_simul_550.npy").tolist()
 # all_beh_dt = np.load("D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\New folder\\all_beh_dt.npy").tolist()
 # poly18, poly19 = list(ori_calib[1]), list(ori_valid[1])
 # print()
 
-# criteria_stat(625, "D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\f_simul_", "D:\Gaby\Tinamit\Dt\Mor\simular\\625_mor\\")
+criteria_stat(625, "D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\f_simul_", "D:\Gaby\Tinamit\Dt\Mor\simular\\625_mor\\")
 
 # poly = np.sort(np.concatenate((list(ori_calib[1]), list(ori_valid[1]))))
 # gof_stat = np.load("D:\Gaby\Tinamit\Dt\Mor\\gof_stat.npy").tolist()
@@ -53,15 +53,18 @@ from tinamit.Calib.ej.sens_análisis import criteria_stat
 
 
 path = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\"
-proc_sim = np.load(path + 'fscabc\\valid_aic.npy').tolist()
-obs_norm = np.load(path + 'valid_obs_norm.npy').tolist()
-percentile = np.load(path + 'ci.npy').tolist()
-npoly = np.load(path + 'npoly.npy').tolist()
+# proc_sim = np.load(path + 'fscabc\\valid_aic.npy').tolist()
+# obs_norm = np.load(path + 'valid_obs_norm.npy').tolist()
+# percentile = np.load(path + 'ci.npy').tolist()
+# npoly = np.load(path + 'npoly.npy').tolist()
+#
+# mask = proc_prob_data(proc_sim['prob'], 'aic', top_N=100)[1]
+# plot_top_sim_obs(proc_sim["all_sim"][mask], obs_norm[vr], npoly, path, proc_sim, percentile,
+#                  l_poly=[36, 71, 175])
 
-mask = proc_prob_data(proc_sim['prob'], 'aic', top_N=100)[1]
-plot_top_sim_obs(proc_sim["all_sim"][mask], obs_norm[vr], npoly, path, proc_sim, percentile,
-                 l_poly=[36, 71, 175])
-
+gof_type=['aic', 'bic', 'mic', 'srm', 'press', 'fpe']
+data = np.load("D:\Gaby\Tinamit\Dt\Mor\\gof_stat.npy").tolist()
+hist_conv(gof_type, data, save="")
 print()
 
 

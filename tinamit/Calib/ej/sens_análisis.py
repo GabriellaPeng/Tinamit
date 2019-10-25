@@ -1,7 +1,9 @@
 import os
 import matplotlib
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
+import pandas as pd
 
 from collections import Counter
 from sklearn.cluster import KMeans
@@ -9,7 +11,7 @@ from sklearn.cluster import KMeans
 import scipy.cluster.hierarchy as sch
 from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-# from tinamit.Análisis.Sens.anlzr import carg_simul_dt
+from tinamit.Análisis.Sens.anlzr import carg_simul_dt
 from tinamit.Análisis.Sens.behavior import find_best_behavior, predict, simple_shape, compute_rmse
 from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid
 from tinamit.Geog.Geog import _gen_clrbar_dic, _gen_d_mapacolores
@@ -1090,12 +1092,12 @@ def map_rank(fst_cut, snd_cut, maxi, row_labels, col_labels, data, title, y_labe
 
 def criteria_stat(num_sample, sample_path, simul_arch, gof_type=['aic', 'bic', 'mic', 'srm', 'press', 'fpe']):
     var_egr='mds_Watertable depth Tinamit'
-    poly = np.sort(np.concatenate((list(ori_calib[1]), list(ori_valid[1]))))
-
+    # poly = np.sort(np.concatenate((list(ori_calib[1]), list(ori_valid[1]))))
+    poly  = np.arange(1, 216)
     gof = {g: {cri: np.zeros([num_sample, len(poly)]) for cri in ['converage', 'linear', 'rmse']} for g in gof_type}
 
     for i in range(num_sample):
-        simulation = carg_simul_dt(simul_arch, i, var_egr, 215)[0][str(i)]
+        simulation = carg_simul_dt(simul_arch, i, var_egr, 215, load_i_file=True)[0][str(i)]
         sample_data = np.load(sample_path+f'{i}.npy').tolist()
 
         for j, d in enumerate(poly):
@@ -1110,13 +1112,13 @@ def criteria_stat(num_sample, sample_path, simul_arch, gof_type=['aic', 'bic', '
                 'slope']
 
             for g in gof_type:
-                pred =  predict(np.arange(len(simulation)), sam_dt[d_bp[g][0][0]]['bp_params'], d_bp[g][0][0])
+                pred =  predict(np.arange(len(simulation)), sam_dt[d_bp[g][0]]['bp_params'], d_bp[g][0])
                 gof[g]['converage'][i][j] =  np.count_nonzero(~np.isnan(pred))/len(simulation)
                 gof[g]['linear'][i][j] = (np.sign(sim_linear) == np.sign(
                     simple_shape(np.arange(len(simulation)), pred, tipo_egr='linear', gof=False)['bp_params']['slope']))
                 gof[g]['rmse'][i][j] = compute_rmse(simulation[:,j], pred)
 
-    np.save("D:\Gaby\Tinamit\Dt\Mor\\gof_stat", gof)
+    np.save("D:\Gaby\Tinamit\Dt\Mor\\gof_stat_all", gof)
     return gof
 
 def plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, plot_path, dim):
@@ -1140,3 +1142,18 @@ def plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, p
         plt.savefig(plot_path + f'{sam_ind}_{poly + 1}', dpi=1000)
         plt.clf()
         plt.close('all')
+
+
+def hist_conv(gof_type, data, save):
+    plt.ioff()
+    sns.set()
+    polys = np.concatenate((list(ori_calib[1]), list(ori_valid[1])))
+    plot_dt = {gof: np.zeros(len(polys))for gof in gof_type}
+
+    for gof in gof_type:
+        for i, poly in enumerate(polys):
+            plot_dt[gof][i] = np.average(data[gof]['coverage'][:, i])
+        x = pd.Series(plot_dt[gof], name="Polygons")
+        ax = sns.distplot(x)
+        ax.savefig(save + f"{gof}-hist.png", dpi=300)
+        plt.clf()

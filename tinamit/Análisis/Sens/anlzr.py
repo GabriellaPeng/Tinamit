@@ -9,7 +9,6 @@ from tinamit.Análisis.Sens.behavior import find_best_behavior
 from tinamit.Análisis.Sens.corridas import simul_sens
 from tinamit.Análisis.Sens.muestr import cargar_mstr_paráms, gen_problema, muestrear_paráms
 # from tinamit.Calib.ej.sens_análisis import plot_4_select_criteria
-from tinamit.Calib.ej.sens_análisis import plot_4_select_criteria
 from tinamit.cositas import cargar_json
 from tinamit.Análisis.Sens import behavior
 
@@ -115,8 +114,10 @@ def singular_behav_proc(simul_arch, num_samples, var_egr=None, tipo_egr=None, di
     # f_simul = format_simul(simulation=simulation, vr=vr, tipo_egr=tipo_egr, dim=dim)
     print(f"for sample {i} ")
 
-    uni_behav_anlzr(tipo_egr, simulation[str(i)], var_egr, i, dim, counted_all_behaviors, gof_type, None,
-                                            guardar + f'f_simul_{i}', plot_path)
+    if guardar is not None:
+        guardar = guardar + f'f_simul_{i}'
+
+    uni_behav_anlzr(tipo_egr, simulation[str(i)], var_egr, i, dim, counted_all_behaviors, gof_type, None, guardar, plot_path)
 
     # np.save(guardar + f'counted_all_behaviors_{start}_{end}', counted_all_behaviors)
 
