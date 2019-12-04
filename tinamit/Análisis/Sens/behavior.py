@@ -98,7 +98,7 @@ def inverso(x, x_data):
 
 
 def log(x, x_data):
-    return x[0] * np.log(x_data + x[1]) + x[2] #invalid value encountered in log
+    return x[0] * np.log(x_data + x[1]) + x[2]
 
 
 def oscilación(x, x_data):
@@ -106,10 +106,10 @@ def oscilación(x, x_data):
 
 
 def oscilación_aten(x, x_data):
-    return np.exp(x[0] * x_data) * x[1] * np.sin(x[2] * x_data + x[3]) + x[4] # overflow encountered in exp, overflow encountered in multiply
+    return np.exp(x[0] * x_data) * x[1] * np.sin(x[2] * x_data + x[3]) + x[4]
 
 
-def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_type=['aic']):
+def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_type=['aic'], type_bnds=None):
     def f_opt(x, x_data, y_data, f):
         return compute_rmse(f(x, x_data), y_data)
 
@@ -136,8 +136,9 @@ def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_typ
             b_params.update({'gof': {i: fc[i](k,y_pred, y_data) for i in gof_type}})
 
     elif tipo_egr == 'logístico':
-        params = optimize.minimize(f_opt, x0=[5.0, 0.85, 3.0, 0], method='Powell',
-                                   args=(x_data, norm_y_data, logístico)).x
+        bnds=((None, None),(-0.1, 1),(None, None),(None, None))
+        params = optimize.minimize(f_opt, x0=[5.0, 0.85, 3.0, 0], method= 'SLSQP', #'Powell',
+                                   args=(x_data, norm_y_data, logístico), bounds=bnds).x
         b_params = {'bp_params': de_standardize(params, y_data, tipo_egr)}
         if gof:
             k = len(b_params['bp_params'])
@@ -153,7 +154,12 @@ def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_typ
             b_params.update({'gof': {i: fc[i](k,y_pred, y_data) for i in gof_type}})
 
     elif tipo_egr == 'log':
-        params = optimize.minimize(f_opt, x0=[0.3, 0.1, 0], method='Nelder-Mead', args=(x_data, norm_y_data, log)).x
+        if type_bnds == -1:
+            bnds = ((None, 0), (0.001, None), (None, None))
+        else:
+            bnds = ((0, None), (0.001, None), (None, None))
+
+        params = optimize.minimize(f_opt, x0=[0.3, 0.1, 0], method='SLSQP', args=(x_data, norm_y_data, log), bounds=bnds).x
         b_params = {'bp_params': de_standardize(params, y_data, tipo_egr)}
         if gof:
             k = len(b_params['bp_params'])
@@ -171,8 +177,9 @@ def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_typ
 
     elif tipo_egr == 'oscilación_aten':
         # x0 assignment is very tricky, the period (3rd arg should always>= real period)
+        bnds=((-0.1, 1),(None, None),(None, None),(None, None), (None, None))
         params = optimize.minimize(f_opt, x0=[0.1, 2, 2, 0, 0], method='SLSQP',  # 0.1, 1, 2, 0.01, 0, SLSQP, Powell
-                                   args=(x_data, norm_y_data, oscilación_aten)).x
+                                   args=(x_data, norm_y_data, oscilación_aten), bounds=bnds).x
         b_params = {'bp_params': de_standardize(params, y_data, tipo_egr)}
         if gof:
             k = len(b_params['bp_params'])
@@ -195,7 +202,12 @@ def forma(x_data, y_data, gof_type=['aic']):
                       'oscilación_aten': {}}
 
     for behavior in behaviors_aics.keys():
-        behaviors_aics[behavior] = simple_shape(x_data, y_data, behavior, gof=True, gof_type=gof_type)
+        if behavior == 'log':
+            type_bnds = [-1 if y_data[-1]-y_data[0]< 0 else None][0]
+        else:
+            type_bnds = None
+
+        behaviors_aics[behavior] = simple_shape(x_data, y_data, behavior, gof=True, gof_type=gof_type, type_bnds=type_bnds)
 
     return behaviors_aics
 

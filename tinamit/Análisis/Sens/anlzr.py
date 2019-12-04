@@ -8,7 +8,7 @@ from xarray import Dataset
 from tinamit.Análisis.Sens.behavior import find_best_behavior
 from tinamit.Análisis.Sens.corridas import simul_sens
 from tinamit.Análisis.Sens.muestr import cargar_mstr_paráms, gen_problema, muestrear_paráms
-# from tinamit.Calib.ej.sens_análisis import plot_4_select_criteria
+from tinamit.Calib.ej.sens_análisis import plot_4_select_criteria
 from tinamit.cositas import cargar_json
 from tinamit.Análisis.Sens import behavior
 
@@ -99,7 +99,7 @@ def analy_by_file(método, líms_paráms, mapa_paráms, mstr_arch, simul_arch, v
         f_simul_arch=f_simul_arch, dim=dim, gof_type=gof_type, plot_path=plot_path
     )
 
-def singular_behav_proc(simul_arch, num_samples, var_egr=None, tipo_egr=None, dim=None, guardar=None, gof_type=None, plot_path=None, f_simul_path=None):
+def singular_behav_proc(simul_arch, num_samples, var_egr=None, tipo_egr=None, dim=None, guardar=None, gof_type=None, plot_path=None, f_simul_path=None, all_sims=False):
     if tipo_egr:
         tipo_egr = tipo_egr.lower()
 
@@ -117,7 +117,11 @@ def singular_behav_proc(simul_arch, num_samples, var_egr=None, tipo_egr=None, di
     if guardar is not None:
         guardar = guardar + f'f_simul_{i}'
 
-    uni_behav_anlzr(tipo_egr, simulation[str(i)], var_egr, i, dim, counted_all_behaviors, gof_type, None, guardar, plot_path)
+    if plot_path:
+        all_sims = carg_simul_dt(simul_arch, 625, var_egr='mds_Watertable depth Tinamit', dim=None)[0]
+        all_sims = np.asarray([v for i, v in all_sims.items()])
+
+    uni_behav_anlzr(tipo_egr, simulation[str(i)], var_egr, i, dim, counted_all_behaviors, gof_type, None, guardar, plot_path, all_sims)
 
     # np.save(guardar + f'counted_all_behaviors_{start}_{end}', counted_all_behaviors)
 
@@ -509,7 +513,7 @@ def behavior_anlzr(simulation, vr, tipo_egr, dim, gof_type, tmñ, save_path=None
 
 
 def uni_behav_anlzr(tipo_egr, val, vr, sam_ind, dim, counted_all_behaviors, gof_type, bf_simul=None, save_path=None,
-                    plot_path=None):
+                    plot_path=None, all_sims=False):
     # all_beh_dt = np.load("D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug\\all_beh_dt.npy").tolist()
     if not isinstance(val, np.ndarray):
         y_data = val[vr].values[2:, :]  ## add [1:, :]  for test file
@@ -533,7 +537,7 @@ def uni_behav_anlzr(tipo_egr, val, vr, sam_ind, dim, counted_all_behaviors, gof_
         print(f"Polygon {j} is under processing!")
 
         if tipo_egr == 'superposition':
-            b_param = behavior.superposition(np.arange(len(y_dt)), y_dt, gof_type)[0]
+            b_param = behavior.superposition(np.arange(2, len(y_dt)+2), y_dt, gof_type)[0]
             all_beh_dt.append(b_param)
         elif tipo_egr == 'forma':
             b_param = behavior.forma(np.arange(len(y_dt)), y_dt, gof_type)
@@ -552,7 +556,7 @@ def uni_behav_anlzr(tipo_egr, val, vr, sam_ind, dim, counted_all_behaviors, gof_
             # counted_all_behaviors[gof].extend(list(Counter([k for k, v in fited_behaviors[i][gof]]).keys()))
         # detail_info = {pattern: [i for i, val in enumerate(fited_behaviors) if val[0] == pattern] for pattern in counted_behaviors}
     if plot_path is not None:
-        plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, plot_path, dim)
+        plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, plot_path, dim, all_sims)
 
     else:
         if bf_simul is None:

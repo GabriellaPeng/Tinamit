@@ -11,7 +11,7 @@ from sklearn.cluster import KMeans
 import scipy.cluster.hierarchy as sch
 from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from tinamit.Análisis.Sens.anlzr import carg_simul_dt
+# from tinamit.Análisis.Sens.anlzr import carg_simul_dt
 from tinamit.Análisis.Sens.behavior import find_best_behavior, predict, simple_shape, compute_rmse
 from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid
 from tinamit.Geog.Geog import _gen_clrbar_dic, _gen_d_mapacolores
@@ -1121,13 +1121,31 @@ def criteria_stat(num_sample, sample_path, simul_arch, gof_type=['aic', 'bic', '
     np.save("D:\Gaby\Tinamit\Dt\Mor\\gof_stat_all", gof)
     return gof
 
-def plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, plot_path, dim):
+def plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, plot_path, dim, all_sims):
     print(f"plot path for sample {sam_ind}")
     colors = {'aic': 'g', 'bic': 'b', 'mic': 'magenta', 'srm': 'cyan', 'press': 'black', 'fpe': 'yellow'}
     markers = {'aic': 'x', 'bic': 4, 'mic': ',', 'srm': '+', 'press': '.', 'fpe': 5}
 
     for i, poly in enumerate(dim):
         plt.ioff()
+
+        if all_sims is not False:
+            q5, q95 = [], []
+            time = np.arange(all_sims.shape[1])
+
+            for t in time:
+                q5.append(np.percentile(all_sims[:, t, poly], 2.5))
+                q95.append(np.percentile(all_sims[:, t, poly], 97.5))
+
+            fig, ax = plt.subplots()
+            ax.plot(q5, color='lightblue', linestyle='solid')
+            ax.plot(q95, color='lightblue', linestyle='solid')
+            ax.fill_between(np.arange(0, len(q5), 1), list(q5), list(q95), facecolor='lightblue', zorder=0,
+                            linewidth=0, label='5th-95th uncertainty bounds', alpha=0.4)
+
+            ax.set_xticklabels([str(t + 2) for t in time], size=8)
+            # plt.legend(prop={'size': 8}, frameon=False)
+
         x = np.arange(len(y_data))
         plt.plot(x, y_data[:, i], label=f'Polygon{poly+1}\nSimulation', color='r', linewidth=2, alpha=0.4)
 
@@ -1138,8 +1156,8 @@ def plot_4_select_criteria(sam_ind, y_data, counted_all_behaviors, all_beh_dt, p
 
         plt.tight_layout()
         plt.savefig(plot_path + f'{sam_ind}_{poly+1}', dpi=500)
-        plt.legend(prop={'size': 8})
-        plt.savefig(plot_path + f'{sam_ind}_{poly + 1}', dpi=1000)
+        # plt.legend(prop={'size': 8})
+        plt.savefig(plot_path + f'{sam_ind}_{poly+1}', dpi=1000)
         plt.clf()
         plt.close('all')
 
@@ -1157,3 +1175,33 @@ def hist_conv(gof_type, data, save):
         ax = sns.distplot(x)
         ax.savefig(save + f"{gof}-hist.png", dpi=300)
         plt.clf()
+
+
+def confidence_interval_simulations(simul_arch, dims, save_path, método='morris'):
+
+    simulation, var_egr = carg_simul_dt(simul_arch['arch_simular'], simul_arch['num_samples'],
+                                        var_egr='mds_Watertable depth Tinamit', dim=None, método=método,
+                                        tipo_egr='superposition')
+
+    simulation = np.asarray([v for i, v in simulation.items()])
+    dims =  [d-1 for d in dims]
+    q5, q95 = [], []
+    time = np.arange(simulation.shape[1])
+
+    for d in dims:
+        for t in time:
+            q5.append(np.percentile(simulation[:, t, d], 2.5))
+            q95.append(np.percentile(simulation[:, t, d], 97.5))
+
+        fig, ax = plt.subplots()
+        ax.plot(q5, color='lightblue', linestyle='solid')
+        ax.plot(q95, color='lightblue', linestyle='solid')
+        ax.fill_between(np.arange(0, len(q5), 1), list(q5), list(q95), facecolor='lightblue', zorder=0,
+                    linewidth=0, label='5th-95th percentile parameter uncertainty', alpha=0.4)
+
+        ax.set_xticklabels([str(t + 2) for t in time], size=8)
+        # plt.legend(prop={'size': 8}, frameon=False)
+        plt.savefig(save_path + f'{d + 1}', dpi=500)
+
+        plt.clf()
+        plt.cla()

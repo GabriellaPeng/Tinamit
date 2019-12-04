@@ -64,7 +64,7 @@ path = "D:\Gaby\Tinamit\Dt\Calib\\real_run\\"
 
 gof_type=['aic', 'bic', 'mic', 'srm', 'press', 'fpe']
 data = np.load("D:\Gaby\Tinamit\Dt\Mor\\gof_stat.npy").tolist()
-hist_conv(gof_type, data, save="")
+hist_conv(gof_type, data, save="D:\Gaby\Tinamit\Dt\Mor\map\hist\\")
 print()
 
 

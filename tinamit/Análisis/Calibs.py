@@ -563,7 +563,7 @@ class CalibradorMod(object):
             obs = obs.obt_datos(vars_obs, tipo='datos')[vars_obs]
             t_final = len(obs['n']) - 1
 
-        if not egr_spotpy:
+        if egr_spotpy is None:
             if método in _algs_spotpy:
                 temp = tempfile.NamedTemporaryFile('w', encoding='UTF-8', prefix='CalibTinamït_')
                 if tipo_proc is None:
@@ -586,11 +586,11 @@ class CalibradorMod(object):
 
                 if método == 'fscabc':
                     if obj_func == 'aic':
-                        muestreador.sample(n_iter, peps=-100)
+                        muestreador.sample(n_iter, peps=500)
                     elif obj_func == 'mic':
                         muestreador.sample(n_iter, peps=0.5)
                     elif obj_func == 'rmse':
-                        muestreador.sample(n_iter, peps=0.4)
+                        muestreador.sample(n_iter, peps=-0.6)
                     elif obj_func == 'nse':
                         muestreador.sample(n_iter, peps=-0.5)
 
@@ -608,14 +608,8 @@ class CalibradorMod(object):
         probs = egr_spotpy.obt_datos('like1')['like1']
         chains = egr_spotpy.obt_datos('chain')['chain']
 
-        if egr_spotpy is not None:
-            prms = {list(final_líms_paráms)[i]: v for i, (p2, v) in enumerate(trzs.items())}
-            prms.update({'likes': probs})
-            return np.save(guardar + '_PrmProb', prms)
         # if os.path.isfile(temp.name + '.csv'):
         #     os.remove(temp.name + '.csv')
-        # if método == 'dream' and obj_func=='aic':
-        #     buenas = (probs <= np.max(np.sort(probs)[:int(len(probs) * 0.2)]))
         if obj_func in ['rmse', 'aic']:
             probs = np.negative(probs)
             buenas = (probs <= np.max(np.sort(probs)[:int(len(probs) * 0.2)]))
@@ -634,9 +628,7 @@ class CalibradorMod(object):
                 col_p = 'par' + str(i)
                 res[p] = {'dist': trzs[col_p], 'val': _calc_máx_trz(trzs[col_p])}
         else:
-
             par_spotpy = {k: str(i) for i, (k, v) in enumerate(final_líms_paráms.items())}
-
             res = {'buenas': np.where(buenas)[0], 'prob': probs, 'chains': chains,
                    'sampled_prm': {prm: trzs[f'par{par_spotpy[prm]}'] for prm in par_spotpy}}
             parameters = { }
@@ -651,6 +643,10 @@ class CalibradorMod(object):
             res['parameters'] = {p: np.asarray(v) for p, v in parameters.items()}
 
         if guardar:
+            prms = {list(final_líms_paráms)[i]: v for i, (p2, v) in enumerate(trzs.items())}
+            prms.update({'likes': probs})
+
+            np.save(guardar + '_PrmProb', prms)
             np.save(guardar, res)
 
         return res
@@ -1014,7 +1010,7 @@ class PatrónProc(object):
         return símismo.eval
 
     def objectivefunction(símismo, simulation, evaluation, params=None):
-        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, cls = símismo.cls, obj_func=símismo.obj_func, método = símismo.método)
+        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, cls=símismo.cls, obj_func=símismo.obj_func, método=símismo.método)
         return gof
 
 
@@ -1028,7 +1024,9 @@ def patro_proces(tipo_proc, npoly, norm_obs, valid=False, obj_func='aic'):
             return norm_obs.T  # nparray[38, 61]
 
         elif tipo_proc == 'patrón':
-            best_behaviors = compute_patron(npoly, norm_obs, obj_func=obj_func)
+            if norm_obs.shape[0] == len(npoly):
+                norm_obs = norm_obs.T
+            best_behaviors = compute_patron(npoly, norm_obs, obj_func=obj_func) #norm_obs: 19*39
             return best_behaviors
 
 
@@ -1083,30 +1081,32 @@ def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_l
             return likes, linear, shps
         elif valid_like:
             return likes
-
-        elif método == 'abc' or método == 'sceua' or método == 'fscabc':
-            return _cls_objfc(cls=cls, obj_func=obj_func, min_max='min', likes=likes)
         else:
-            return _cls_objfc(cls=cls, obj_func=obj_func, min_max='max', likes=likes)
+            if método == 'abc' or método == 'sceua' or método == 'fscabc':
+                return _cls_objfc(cls=cls, obj_func=obj_func, min_max='min', likes=likes)
+            else:
+                return _cls_objfc(cls=cls, obj_func=obj_func, min_max='max', likes=likes)
 
     elif tipo_proc == 'multidim':
-        if eval.shape == sim.shape:  # 39*18
-            poly = eval.shape[1]
-            likes = np.zeros(poly)
-            for i in range(poly):
-                if obj_func.lower() == 'nse':
-                    likes[i] = nse(eval[:, i], sim[:, i])
-                elif obj_func.lower() == 'rmse':
-                    likes[i] = compute_rmse(eval[:, i], sim[:, i])
-                else:
-                    raise ValueError(f"{obj_func} is not considered")
-            if valid:
-                return likes
+        if eval.shape != sim.shape:  # 39*18
+            eval= eval.T
+
+        poly = eval.shape[1]
+        likes = np.zeros(poly)
+        for i in range(poly):
+            if obj_func.lower() == 'nse':
+                likes[i] = nse(eval[:, i], sim[:, i])
+            elif obj_func.lower() == 'rmse':
+                likes[i] = compute_rmse(eval[:, i], sim[:, i])
             else:
-                if método == 'abc' or método == 'sceua' or método == 'fscabc':
-                    return _cls_objfc(cls=cls, obj_func=obj_func, min_max='min', likes=likes)
-                else:
-                    return _cls_objfc(cls=cls, obj_func=obj_func, min_max='max', likes=likes)
+                raise ValueError(f"{obj_func} is not considered")
+        if valid:
+            return likes
+        else:
+            if método == 'abc' or método == 'sceua' or método == 'fscabc':
+                return _cls_objfc(cls=cls, obj_func=obj_func, min_max='min', likes=likes)
+            else:
+                return _cls_objfc(cls=cls, obj_func=obj_func, min_max='max', likes=likes)
 
 
 def _cls_objfc(cls, obj_func, min_max, likes):

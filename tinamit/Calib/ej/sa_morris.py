@@ -3,7 +3,7 @@ from tinamit.Análisis.Sens.anlzr import analy_by_file, parallel_behav_proc, anl
 from tinamit.Análisis.Sens.corridas import simul_sens
 from tinamit.Análisis.Sens.muestr import cargar_mstr_paráms
 from tinamit.Calib.ej.info_paráms import mapa_paráms, líms_paráms
-from tinamit.Calib.ej.sens_análisis import gen_rank_map, hist_conv
+from tinamit.Calib.ej.sens_análisis import gen_rank_map, hist_conv, confidence_interval_simulations
 from tinamit.Calib.ej.soil_class import p_soil_class
 
 guardar  = "D:\Gaby\Tinamit\Dt\Mor\\"
@@ -42,10 +42,10 @@ if __name__ == "__main__":
                         #                    "D:\Thesis\pythonProject\localuse\Dt\Mor\Mor_home\\f_simul\corrected_bf\counted_all\\counted_all_behav.npy"})
 
     # np.save(guardar+'2019', egr)
-    singular_behav_proc(simul_arch=direc, num_samples=0, tipo_egr='superposition',
-                        var_egr='mds_Watertable depth Tinamit', guardar=None, dim=[2, 3, 4], #guardar=f"{guardar}f_simul\\sept\\", dim=[7, 52, 71, 172, 187, 215]
+    singular_behav_proc(simul_arch=direc, num_samples=90, tipo_egr='superposition',
+                        var_egr='mds_Watertable depth Tinamit', dim=[7, 52, 71, 172, 187, 215], #guardar=f"{guardar}f_simul\\sept\\", dim=[7, 52, 71, 172, 187, 215]
                         gof_type=['aic', 'bic', 'mic', 'srm', 'press', 'fpe'],
-                        plot_path=plot_path + 'select_criteria_no_pattern_name\\')#"D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug")
+                        plot_path=plot_path + 'select_criteria_no_pattern_name\\', all_sims=True)#"D:\Gaby\Tinamit\Dt\Mor\\f_simul\\aug")
 
     # parallel_behav_proc(direc, var_egr='mds_Watertable depth Tinamit', tipo_egr="superposition", dim=[7, 52, 71, 172, 187, 215],
     #                     guardar=f"{guardar}f_simul\\sept\\", gof_type=['aic', 'bic', 'mic', 'srm', 'press', 'fpe'],
@@ -109,3 +109,7 @@ if __name__ == "__main__":
 
 
     # _read_dt_4_map('Morris')
+
+    #Figure 5
+    #[7, 52, 71, 172, 187, 215]
+    # confidence_interval_simulations(simul_arch=direc, save_path=plot_path, dims=[7])

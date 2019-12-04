@@ -50,8 +50,7 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
                        all(v >= tol for vr in l_vars for ll, v in egr['vars'][vr].items() if 'ens' in ll)
 
         for vr in l_vars:
-            egr[vr] = {'nse': gen_gof('multidim', sim=sims_norm_T[vr], obj_func='NSE',
-                                      eval=obs_norm[vr])}
+            egr[vr] = {'nse': gen_gof('multidim', sim=sims_norm_T[vr], eval=obs_norm[vr], obj_func='NSE')}
             egr['éxito_nse'] = all(v >= tol for vr in l_vars for v in egr[vr]['NSE'])
 
             return egr
@@ -78,12 +77,12 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
             sim_val = proc_sim[type_sim]
 
             if tipo_proc == 'multidim':
-                likes =  gen_gof('multidim', sim=sim_val, eval=obs_norm[vr], valid=True, obj_func=obj_func, método=método)
+                likes = gen_gof('multidim', sim=sim_val, eval=obs_norm[vr], valid=True, obj_func=obj_func)
                 egr[vr][tipo_proc][obj_func].update({'likes': {type_sim: likes}})
 
                 top_likes = np.zeros([len(proc_sim['weighted_res']), len(npoly)])
                 for i, sim_v in enumerate(proc_sim['weighted_res']):
-                    top_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_norm[vr], valid=True, obj_func=obj_func, método=método)
+                    top_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_norm[vr], valid=True, obj_func=obj_func)
 
                 egr[vr][tipo_proc][obj_func]['likes'].update({'weighted_res': top_likes})
 
@@ -97,12 +96,13 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
                                                                     obj_func=obj_func)
 
                 likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
-                                                      obj_func=obj_func, método=método)  # 19*41
+                                                      obj_func=obj_func)  # 19*41
                 top_wt_res = proc_sim['weighted_res']
                 top_likes = np.zeros([len(top_wt_res), len(npoly)])
 
                 for i, sim_v in enumerate(top_wt_res):
-                    top_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False, obj_func=obj_func, valid_like=True, método=método)
+                    top_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False, obj_func=obj_func,
+                                              valid_like=True)
 
                 egr[vr][tipo_proc][obj_func].update({'likes': {'weighted_res': top_likes}})
                 egr[vr][tipo_proc][obj_func]['likes'].update({type_sim: likes})
@@ -122,7 +122,7 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
             #
             # if tipo_proc == 'multidim':
             #     egr[vr][tipo_proc][obj_func]['likes'] = gen_gof('multidim', sim=proc_sim["weighted_sim"], eval=obs_norm[vr],
-            #                                                     valid=True, obj_func=obj_func, método=método)
+            #                                                     valid=True, obj_func=obj_func)
             #
             # egr[vr]['Theil'] = {type_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc', 'mse']} for type_sim in
             #                     proc_sim}
@@ -146,7 +146,7 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
             #                                                             obj_func=obj_func)
             #
             #         likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
-            #                                               obj_func=obj_func, método=método)  # 19*41
+            #                                               obj_func=obj_func)  # 19*41
             #
             #         egr[vr][tipo_proc][obj_func][type_sim].update({'likes': likes})
             #
@@ -162,7 +162,7 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
             #         print(f"{n}th pattern detection for {método}")
             #         egr[vr][tipo_proc][obj_func][sim][n] = gen_gof('patrón', sim=vars()[sim][n],
             #                                                              eval=best_behaviors, valid=False,
-            #                                                              obj_func=obj_func, valid_like=True, método=método)
+            #                                                              obj_func=obj_func, valid_like=True)
             return egr
 
 

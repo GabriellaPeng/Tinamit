@@ -1775,7 +1775,7 @@ class Modelo(object):
 
         símismo.calibs.update(dic)
 
-    def calibrar(símismo, paráms, bd, líms_paráms=None, vars_obs=None, n_iter=10, método='mle', tipo_proc=None,
+    def calibrar(símismo, paráms, bd, líms_paráms=None, vars_obs=None, n_iter=500, método='mle', tipo_proc=None,
                  mapa_paráms=None, final_líms_paráms=None, guardar=False, guar_sim=None, egr_spotpy=None, warmup_period=None, cls=None, obj_func=None):
 
         if vars_obs is None:
@@ -1812,7 +1812,7 @@ class Modelo(object):
             símismo.calibs.update(d_calibs)
 
     def validar(símismo, bd, var=None, corresp_vars=None, tipo_proc=None, guardar=False,
-                lg=None, paralelo=False, valid_sim=False, n_sim=None, save_plot=None, warmup_period=None, obj_func=None, método=None):
+                lg=None, paralelo=False, valid_sim=False, n_sim=None, warmup_period=None, obj_func=None, método=None):
         if var is None:
             var = None
         elif isinstance(var, str):
@@ -1824,7 +1824,7 @@ class Modelo(object):
                 bd_lg = gen_SuperBD(bd[lg])
                 vld = símismo._validar(bd=bd_lg, var=var, corresp_vars=corresp_vars, lg=lg,
                                        tipo_proc=None, guardar=guardar,
-                                       paralelo=paralelo, valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot,
+                                       paralelo=paralelo, valid_sim=valid_sim, n_sim=n_sim,
                                        warmup_period=warmup_period, obj_func=obj_func, método=método)
                 res[lg] = vld
             res['éxito'] = all(d['éxito'] for d in res.values())
@@ -1837,10 +1837,10 @@ class Modelo(object):
 
         return símismo._validar(bd=bd, var=var,corresp_vars=corresp_vars, tipo_proc=tipo_proc,
                                 guardar=guardar, lg=lg, paralelo=paralelo, obj_func=obj_func,
-                                valid_sim=valid_sim, n_sim=n_sim, save_plot=save_plot, warmup_period=warmup_period, método=método)
+                                valid_sim=valid_sim, n_sim=n_sim, warmup_period=warmup_period, método=método)
 
     def _validar(símismo, bd, var, corresp_vars, tipo_proc, guardar, lg, paralelo,
-                 valid_sim, n_sim, save_plot, warmup_period, obj_func, método):
+                 valid_sim, n_sim, warmup_period, obj_func, método):
         if corresp_vars is None:
             corresp_vars = {}
 
@@ -1890,18 +1890,17 @@ class Modelo(object):
             matrs_simul = {vr: np.array([d[vr].values for d in res_simul.values()]) for vr in l_vars}
 
         else:
-            if n_sim is not None:
-                all_res = np.empty([n_sim[1] - n_sim[0], *obs[l_vars[0]].values.shape])  # 500*39*19
+            all_res = np.empty([n_sim[1] - n_sim[0], *obs[l_vars[0]].values.shape])  # 500*39*19
 
-                for i in range(n_sim[1] - n_sim[0]):
-                    if warmup_period is not None:
-                        all_res[i, :] = np.asarray(
-                            [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
-                                 l_vars[0]].values[warmup_period:, j - 1] for j in obs['x0'].values]).T
-                    else:
-                        all_res[i, :] = np.asarray(
-                            [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
-                                 l_vars[0]].values[:, j - 1] for j in obs['x0'].values]).T
+            for i in range(n_sim[1] - n_sim[0]):
+                if warmup_period is not None:
+                    all_res[i, :] = np.asarray(
+                        [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
+                             l_vars[0]].values[warmup_period:, j - 1] for j in obs['x0'].values]).T
+                else:
+                    all_res[i, :] = np.asarray(
+                        [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
+                             l_vars[0]].values[:, j - 1] for j in obs['x0'].values]).T
 
             # top_res = all_res[lg['buenas']]
             # top_prob = lg['prob'][lg['buenas']]
