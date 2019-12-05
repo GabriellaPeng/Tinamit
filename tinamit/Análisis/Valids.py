@@ -13,7 +13,7 @@ from tinamit.Análisis.Sens.behavior import predict, ICC_rep_anova, theil_inequa
 from tinamit.Calib.ej.ej_calib.calib_análisis import plot_top_sim_obs, plot_save
 
 
-def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=None):
+def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None):
     """
 
     patt_vec['bp_params']
@@ -57,7 +57,7 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
 
     else:
         npoly = obs['x0'].values
-        mu_obs_matr, sg_obs_matr, obs_norm = aplastar(npoly, obs[l_vars[0]])  # obs_norm: dict {'y': 6*21}
+        mu_obs_matr, sg_obs_matr, obs_norm = aplastar(npoly, obs[l_vars[0]].values)  # obs_norm: dict {'y': 6*21}
         obs_norm = {va: obs_norm.T for va in l_vars}  # [nparray[39*18]]
 
         proc_sim = { }
@@ -109,60 +109,15 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, método=
 
                 egr[vr][tipo_proc][obj_func].update({'trend_agreement': coeff_agreement(
                     obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_norm[vr], best_behaviors)})
-            # if percentile is not None:
-            #     percentiles, proc_sim = confidence_interval(proc_sim["all_sim"], obs_norm[vr], proc_sim, obj_func)
-            #     egr[vr]['CI'] = percentiles
-            #     mask = proc_prob_data(proc_sim['prob'], obj_func, top_N=len(proc_sim['prob'])*0.2)[1]
-            #     plot_top_sim_obs(proc_sim["all_sim"][mask], obs_norm[vr], npoly, save_plot, proc_sim, percentiles,
-            #                      l_poly=[36, 71, 175])  ##TODO: percentiles are different.
-            # else:
-            #     proc_sim = confidence_interval(proc_sim["all_sim"], obs_norm[vr], proc_sim, obj_func)[1]
-            #
-            # egr[vr][tipo_proc] = {obj_func: {ts: {'trend_agreement': {}} for ts in proc_sim}} #all weighted_sim + top_weighted_sim
-            #
-            # if tipo_proc == 'multidim':
-            #     egr[vr][tipo_proc][obj_func]['likes'] = gen_gof('multidim', sim=proc_sim["weighted_sim"], eval=obs_norm[vr],
-            #                                                     valid=True, obj_func=obj_func)
-            #
-            # egr[vr]['Theil'] = {type_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc', 'mse']} for type_sim in
-            #                     proc_sim}
-            #
-            # for type_sim, sim_val in proc_sim.items():
-            #     for p in range(len(npoly)):
-            #         egr[vr]['Theil'][type_sim]['mse'][p], egr[vr]['Theil'][type_sim]['Um'][p], egr[vr]['Theil'][type_sim]['Us'][p], \
-            #         egr[vr]['Theil'][type_sim]['Uc'][
-            #             p] = theil_inequal(sim_val[:, p], obs_norm[vr][:, p])
-            #
-            #     if tipo_proc == 'multidim':
-            #         for behvior_gof in ['aic', 'mic']:
-            #             obs_linear = patro_proces(tipo_proc, npoly, obs_norm[vr], valid=True, obj_func=behvior_gof)[1]
-            #             sim_linear = patro_proces(tipo_proc, npoly, sim_val, valid=True, obj_func=behvior_gof)[1]
-            #             egr[vr][tipo_proc][obj_func][type_sim]['trend_agreement'].update(
-            #                 {behvior_gof: coeff_agreement(obs_linear, sim_linear, None, None, npoly,
-            #                                                       sim_val, obs_norm[vr])})
-            #
-            #     elif tipo_proc == 'patrón':
-            #         best_behaviors, obs_linear, obs_shps = patro_proces('patrón', npoly, obs_norm[vr], valid=True,
-            #                                                             obj_func=obj_func)
-            #
-            #         likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
-            #                                               obj_func=obj_func)  # 19*41
-            #
-            #         egr[vr][tipo_proc][obj_func][type_sim].update({'likes': likes})
-            #
-            #         egr[vr][tipo_proc][obj_func][type_sim]['trend_agreement'] = coeff_agreement(
-            #             obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_norm[vr])
 
-            # egr[vr]['proc_sim'] = {'all_sim': all_sim, 'obs_norm': obs_norm[vr]}
-            # egr[vr]['proc_sim'].update({**proc_sim})
-            # for sim in ['top_sim']:#, 'all_sim']:
-            #     egr[vr][tipo_proc][obj_func].update({sim: np.zeros([len(vars()[sim]), len(npoly)])})
-            #     print(f"\nStarting {len(vars()[sim])} times of pattern detection\n")
-            #     for n in range(len(vars()[sim])):
-            #         print(f"{n}th pattern detection for {método}")
-            #         egr[vr][tipo_proc][obj_func][sim][n] = gen_gof('patrón', sim=vars()[sim][n],
-            #                                                              eval=best_behaviors, valid=False,
-            #                                                              obj_func=obj_func, valid_like=True)
+                egr[vr][tipo_proc][obj_func].update({'Theil':{type_sim: {i: np.zeros([len(npoly)]) for i in ['Um','Us','Uc','mse']}}})
+                for p in range(len(npoly)):
+                    mse, um, us, uc = theil_inequal(sim_val[:, p], obs_norm[vr][:, p])
+                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['mse'][p] = mse
+                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['Um'][p] = um
+                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['Us'][p] = us
+                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['Uc'][p] = uc
+
             return egr
 
 
@@ -442,7 +397,10 @@ def generate_weighted_simulations(all_simulations, likes, objective_function, to
 
     top_likes, mask = proc_prob_data(likes, objective_function, top_N)
 
-    processed_simulations = {'weighted_sim': np.zeros([len_time, no_polys]), 'top_weighted_sim': np.zeros([len_time, no_polys]), 'all_res': all_simulations, 'weighted_res': all_simulations[mask]}
+    processed_simulations = {'weighted_sim': np.zeros([len_time, no_polys]),
+                             'top_weighted_sim': np.zeros([len_time, no_polys]),
+                             'all_res': all_simulations,
+                             'weighted_res': all_simulations[mask]}
 
     all_weights = np.asarray([(p - np.min(likes)) / np.ptp(likes) for p in likes])
     top_weights = np.asarray([(p - np.min(likes)) / np.ptp(likes) for p in top_likes])

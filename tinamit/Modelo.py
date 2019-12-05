@@ -1922,7 +1922,7 @@ class Modelo(object):
         if tipo_proc is None:
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)
         else:
-            resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc, obj_func=obj_func, método=método)
+            resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc, obj_func=obj_func)
 
         if guardar and tipo_proc is not None:
             np.save(guardar, resultados)
