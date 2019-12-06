@@ -761,21 +761,18 @@ def _calc_máx_trz(trz):
 
 
 def _conv_xr(datos, vars_obs, warmup_period=None):  # datos[0] time; datos[1] dict{obspoly: ndarray}
+    if warmup_period is None:
+        warmup_period = 0
+
     if isinstance(datos, tuple):
-        if warmup_period is None:
-            matriz_vacía = np.empty([len(list(datos[1].values())[0]), len(datos[1])])
-        else:
-            datos = list(datos)
-            matriz_vacía = np.empty([len(datos[0]) - warmup_period, len(datos[1])])  # 60, 38
-            datos[0] = datos[0].values[warmup_period:]
+        datos = list(datos)
+        matriz_vacía = np.empty([len(datos[0]) - warmup_period, len(datos[1])])  # 60, 38
+        datos[0] = datos[0].values[warmup_period:]
     else:
         raise TypeError(_("Por favor agregue o seleccione el tipo correcto de los datos observados."))
 
     for poly, data in datos[1].items():
-        if warmup_period is None:
-            matriz_vacía[:, list(datos[1]).index(poly)] = data
-        else:
-            matriz_vacía[:, list(datos[1]).index(poly)] = data[warmup_period:]
+        matriz_vacía[:, list(datos[1]).index(poly)] = data[warmup_period:]
 
     return xr.Dataset(
         data_vars={vars_obs[0]: (('n', 'x0'), matriz_vacía)},
@@ -993,6 +990,9 @@ class PatrónProc(object):
                                         vals_inic=vals_inic, guardar=símismo.guar_sim)
 
         PatrónProc.itr += 1
+
+        if símismo.warmup_period is None:
+            símismo.warmup_period = 0
 
         if isinstance(res, dict):
             m_res = np.asarray(

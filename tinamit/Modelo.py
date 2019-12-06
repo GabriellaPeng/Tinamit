@@ -1812,7 +1812,7 @@ class Modelo(object):
             símismo.calibs.update(d_calibs)
 
     def validar(símismo, bd, var=None, corresp_vars=None, tipo_proc=None, guardar=False,
-                lg=None, paralelo=False, valid_sim=False, n_sim=None, warmup_period=None, obj_func=None, método=None):
+                lg=None, paralelo=False, valid_sim=False, n_sim=None, warmup_period=None, obj_func=None):
         if var is None:
             var = None
         elif isinstance(var, str):
@@ -1825,7 +1825,7 @@ class Modelo(object):
                 vld = símismo._validar(bd=bd_lg, var=var, corresp_vars=corresp_vars, lg=lg,
                                        tipo_proc=None, guardar=guardar,
                                        paralelo=paralelo, valid_sim=valid_sim, n_sim=n_sim,
-                                       warmup_period=warmup_period, obj_func=obj_func, método=método)
+                                       warmup_period=warmup_period, obj_func=obj_func)
                 res[lg] = vld
             res['éxito'] = all(d['éxito'] for d in res.values())
             return res
@@ -1837,10 +1837,10 @@ class Modelo(object):
 
         return símismo._validar(bd=bd, var=var,corresp_vars=corresp_vars, tipo_proc=tipo_proc,
                                 guardar=guardar, lg=lg, paralelo=paralelo, obj_func=obj_func,
-                                valid_sim=valid_sim, n_sim=n_sim, warmup_period=warmup_period, método=método)
+                                valid_sim=valid_sim, n_sim=n_sim, warmup_period=warmup_period)
 
     def _validar(símismo, bd, var, corresp_vars, tipo_proc, guardar, lg, paralelo,
-                 valid_sim, n_sim, warmup_period, obj_func, método):
+                 valid_sim, n_sim, warmup_period, obj_func):
         if corresp_vars is None:
             corresp_vars = {}
 
@@ -1893,30 +1893,12 @@ class Modelo(object):
             all_res = np.empty([n_sim[1] - n_sim[0], *obs[l_vars[0]].values.shape])  # 500*39*19
 
             for i in range(n_sim[1] - n_sim[0]):
-                if warmup_period is not None:
-                    all_res[i, :] = np.asarray(
-                        [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
-                             l_vars[0]].values[warmup_period:, j - 1] for j in obs['x0'].values]).T
-                else:
-                    all_res[i, :] = np.asarray(
-                        [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
-                             l_vars[0]].values[:, j - 1] for j in obs['x0'].values]).T
+                if warmup_period is None:
+                    warmup_period = 0
+                all_res[i, :] = np.asarray(
+                    [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
+                         l_vars[0]].values[warmup_period:, j - 1] for j in obs['x0'].values]).T
 
-            # top_res = all_res[lg['buenas']]
-            # top_prob = lg['prob'][lg['buenas']]
-            # top_wt = np.asarray([(p - np.min(top_prob)) / np.ptp(top_prob) for p in top_prob])
-            # all_wt = np.asarray([(p - np.min(lg['prob'])) / np.ptp(lg['prob']) for p in lg['prob']])
-
-            # mu_res, mdn_res = np.zeros([1, *top_res.shape[1:]]), np.zeros([1, *top_res.shape[1:]])
-
-            # for p in range(len(obs['x0'])):
-            #     for t in range(len(obs['n'])):
-            #         data = top_res[:, t, p]
-            #         mu_res[:, t, p] = np.mean(data)
-            #         mdn_res[:, t, p] = np.median(data)
-
-                    # weighted_res[:, t, p] = np.average(all_res[:, t, p], weights=all_wt)
-                    # weighted_sem[:, t, p] = np.sqrt(np.average((all_res[:, t, p]-weighted_res[:, t, p][0])**2, weights=all_wt)/len(all_res))
             matrs_simul = {vr: {'all_res': all_res, 'prob': lg['prob']} for vr in l_vars}
 
         if tipo_proc is None:
