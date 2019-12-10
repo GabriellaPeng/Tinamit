@@ -870,9 +870,9 @@ else:
 # plot_heatmap_4_methods(mtd, ['mic','aic','rmse', 'nse'])
 
 # trend_agree = { }
-# for obj_func in [ 'mic','aic','rmse', 'nse']: #,'rmse', 'nse']: #'mic','aic','rmse', 'nse'
+for obj_func in [ 'mic','aic','rmse', 'nse']: #,'rmse', 'nse']: #'mic','aic','rmse', 'nse'
     # plot_gof_convergence(obj_func, mtd, res_path, save_plot)
-#     boxplot_like_loc(mtd, res_path, save_plot, obj_func)
+    boxplot_like_loc(mtd, res_path, save_plot, obj_func)
 
     # plot_theil(mtd, res_path, save_plot, obj_func)
 

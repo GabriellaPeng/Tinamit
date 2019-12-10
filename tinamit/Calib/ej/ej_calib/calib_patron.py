@@ -50,7 +50,7 @@ def _input_dt(method, obj_func, c_v, egr_spotpy=None):
         tipo_proc = 'multidim'
         sim_path = path + f"simular\\aug\\{method}\\"
         if c_v == 'valid':
-            lg = np.load(guard + f'oct\\calib_{obj_func}.npy').tolist()
+            lg = np.load(guard + f'oct\\{method}_{obj_func}.npy').tolist()
 
     if c_v == 'valid':
 
@@ -61,7 +61,7 @@ def _input_dt(method, obj_func, c_v, egr_spotpy=None):
 
         n_sim = d_val[method][obj_func]
 
-        guardar = guard + f'nov\\valid_{obj_func}'
+        guardar = guard + f'nov\\valid_{obj_func}41'
         valid_sim = sim_path + f'{obj_func}\\'
 
         return tipo_proc, n_sim, guardar, valid_sim, lg
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     calib_valid = 'valid'
 
     for m in ['fscabc', 'demcz', 'dream', 'mle']:
-        for obj_func in ['aic', 'nse', 'rmse', 'mic']:
+        for obj_func in ['nse', 'rmse']:
             if calib_valid == 'calib':
                 tipo_proc, guardar, guar_sim, egr_spotpy = _input_dt(method=m, obj_func=obj_func, c_v=calib_valid, egr_spotpy=egr_spotpy)
                 _calib(tipo_proc=tipo_proc, guardar=guardar, método=m, obj_func=obj_func,
