@@ -2,7 +2,7 @@ import numpy as np
 from tinamit.Calib.ej.sens_análisis import gen_mod
 from tinamit.Análisis.Sens.muestr import gen_problema
 from tinamit.Calib.ej.info_paráms import calib_líms_paráms, calib_mapa_paráms
-from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid, path, vr
+from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid, path
 
 líms_paráms_final = []
 líms_paráms_final.append(gen_problema(líms_paráms=calib_líms_paráms, mapa_paráms=calib_mapa_paráms, ficticia=False)[1])
