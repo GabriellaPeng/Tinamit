@@ -136,13 +136,13 @@ def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_typ
             b_params.update({'gof': {i: fc[i](k,y_pred, y_data) for i in gof_type}})
 
     elif tipo_egr == 'logístico':
-        bnds=((None, None),(-0.1, 1),(None, None),(None, None))
+        bnds=((-5, 10),(-0.1, 1),(None, 10),(None, 10))
         params = optimize.minimize(f_opt, x0=[5.0, 0.85, 3.0, 0], method= 'SLSQP', #'Powell',
                                    args=(x_data, norm_y_data, logístico), bounds=bnds).x
         b_params = {'bp_params': de_standardize(params, y_data, tipo_egr)}
         if gof:
             k = len(b_params['bp_params'])
-            y_pred =logístico(np.asarray(list(b_params['bp_params'].values())), x_data)
+            y_pred = logístico(np.asarray(list(b_params['bp_params'].values())), x_data)
             b_params.update({'gof': {i: fc[i](k,y_pred, y_data) for i in gof_type}})
 
     elif tipo_egr == 'inverso':
@@ -192,25 +192,32 @@ def simple_shape(x_data=None, y_data=None, tipo_egr='linear', gof=False, gof_typ
     return b_params
 
 
-def forma(x_data, y_data, gof_type=['aic']):
-    behaviors_aics = {'linear': {},
-                      'exponencial': {},
-                      'logístico': {},
-                      'inverso': {},
-                      'log': {},
-                      'oscilación': {},
-                      'oscilación_aten': {}}
+def forma(x_data, y_data, gof_type=['aic'], behaviours=None):
+    if behaviours is None:
+        behaviors_aics = {'linear': {},
+                          'exponencial': {},
+                          'logístico': {},
+                          'inverso': {},
+                          'log': {},
+                          'oscilación': {},
+                          'oscilación_aten': {}}
+    else:
+        behaviors_aics = {beh: { } for beh in behaviours}
 
     for behavior in behaviors_aics.keys():
-        if behavior == 'log':
-            type_bnds = [-1 if y_data[-1]-y_data[0]< 0 else None][0]
-        else:
-            type_bnds = None
-
+        type_bnds = check_behaviour_bounds(behavior, y_data)
         behaviors_aics[behavior] = simple_shape(x_data, y_data, behavior, gof=True, gof_type=gof_type, type_bnds=type_bnds)
 
     return behaviors_aics
 
+
+def check_behaviour_bounds(behavior, y_data):
+    if behavior == 'log':
+        type_bnds = [-1 if y_data[-1]-y_data[0]< 0 else None][0]
+    else:
+        type_bnds = None
+
+    return type_bnds
 
 def find_best_behavior(all_beh_dt, trans_shape=None, gof_type=['aic']):
     fited_behaviors = {g: [ ] for g in gof_type}
@@ -238,8 +245,8 @@ def find_best_behavior(all_beh_dt, trans_shape=None, gof_type=['aic']):
     return fited_behaviors, gof_dict
 
 
-def superposition(x_data, y_data, gof_type = ['aic']):
-    behaviors_aics = forma(x_data, y_data, gof_type)
+def superposition(x_data, y_data, gof_type = ['aic'], behaviours=None):
+    behaviors_aics = forma(x_data, y_data, gof_type, behaviours)
 
     b_param = dict(behaviors_aics)
     for behavior in behaviors_aics:

@@ -42,15 +42,15 @@ def _input_dt(method, obj_func, c_v, egr_spotpy=None):
 
     if obj_func in ['aic', 'mic']:
         tipo_proc = 'patrón'
-        sim_path = path + f"simular\\nov\\{method}\\"
+        sim_path = path + f"simular\\dec\\{method}\\"
         if c_v == 'valid':
             lg = np.load(guard + f'nov\\calib_{obj_func}.npy').tolist()
 
     elif obj_func in ['nse', 'rmse']:
         tipo_proc = 'multidim'
-        sim_path = path + f"simular\\aug\\{method}\\"
+        sim_path = path + f"simular\\dec\\{method}\\"
         if c_v == 'valid':
-            lg = np.load(guard + f'oct\\{method}_{obj_func}.npy').tolist()
+            lg = np.load(guard + f'nov\\calib_{obj_func}.npy').tolist()
 
     if c_v == 'valid':
 
@@ -70,7 +70,7 @@ def _input_dt(method, obj_func, c_v, egr_spotpy=None):
         if egr_spotpy is not None:
             egr_spotpy = sim_path + f'nov\\{method}_{obj_func}.csv'
 
-        guardar = guard + f'nov\\calib_{obj_func}'
+        guardar = guard + f'dec\\calib_{obj_func}'
         guar_sim = sim_path + f'{obj_func}\\'
         return tipo_proc, guardar, guar_sim, egr_spotpy
 
@@ -78,10 +78,10 @@ def _input_dt(method, obj_func, c_v, egr_spotpy=None):
 if __name__ == "__main__":
     egr_spotpy = None
     warmup_period = None # 2
-    calib_valid = 'valid'
+    calib_valid = 'calib'
 
-    for m in ['fscabc', 'demcz', 'dream', 'mle']:
-        for obj_func in ['nse', 'rmse']:
+    for m in ['dream','fscabc', 'mle', 'demcz']:
+        for obj_func in ['aic', 'mic', 'nse', 'rmse']:
             if calib_valid == 'calib':
                 tipo_proc, guardar, guar_sim, egr_spotpy = _input_dt(method=m, obj_func=obj_func, c_v=calib_valid, egr_spotpy=egr_spotpy)
                 _calib(tipo_proc=tipo_proc, guardar=guardar, método=m, obj_func=obj_func,

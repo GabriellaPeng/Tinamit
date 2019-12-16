@@ -2,7 +2,7 @@ import numpy as np
 from tinamit.Análisis.Calibs import _conv_xr
 from tinamit.Calib.ej.obs_patrón import read_obs_csv
 
-path = "D:\Gaby\\" + "\Dt\Calib\\"
+path = "D:\Gaby\\" + "Dt\Calib\\"
 calib = "D:\Gaby\\" +  "calib.csv"
 valid = "D:\Gaby\\" + 'valid.csv'
 

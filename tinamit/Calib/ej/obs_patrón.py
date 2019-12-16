@@ -68,7 +68,11 @@ def compute_patron(npoly, norm_obs=None, valid=False, obj_func='aic', tipo_proc=
     best_behaviors = {}
     linear = { }
     all_bbehav_params = { }
+
     if isinstance(norm_obs, np.ndarray):
+        if norm_obs.shape[1] != len(npoly):
+            norm_obs = norm_obs.T
+
         data = norm_obs
         for i, p in enumerate(npoly):
             print(f"Behavior Detecting of Polygon {p} !")
@@ -77,12 +81,12 @@ def compute_patron(npoly, norm_obs=None, valid=False, obj_func='aic', tipo_proc=
                     linear[p] = simple_shape(np.arange(1, len(data[:, i])+1),data[:, i], 'linear', gof=False)
                 elif tipo_proc=='patrón':
                     re = superposition(np.arange(1, len(data[:, i])+1), data[:, i], gof_type=[obj_func])[0]
-                    best_behaviors[p] = find_best_behavior(re, gof_type=[obj_func])[0][obj_func][0] # TODO 'aic or not
+                    best_behaviors[p] = find_best_behavior(re, gof_type=[obj_func])[0][obj_func][0]
                     all_bbehav_params[p] = re[best_behaviors[p]]
                     linear[p] = re['linear']
             else:
                 re = superposition(np.arange(1, len(data[:, i]) + 1), data[:, i], gof_type=[obj_func])[0]
-                best_behaviors[p] = find_best_behavior(re, gof_type=[obj_func])[0][obj_func][0]  # TODO 'aic or not
+                best_behaviors[p] = find_best_behavior(re, gof_type=[obj_func])[0][obj_func][0]
 
         if valid:
             if tipo_proc == 'patrón':

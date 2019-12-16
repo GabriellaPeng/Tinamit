@@ -190,7 +190,7 @@ def path_4_plot(res_path, save_plot, plot_type, mtd, obj_func, poly_type=19, pro
     if plot_type == 'prm_prb':
         calib_res = {}
         for m in mtd:
-            calib_res[m] = np.load(res_path + f'{m}\\{m}_{obj_func}.npy').tolist()
+            calib_res[m] = np.load(res_path + f'{m}\\oct\\{m}_{obj_func}.npy').tolist()
 
         if poly_type == 19:
             poly = np.asarray(list(v_obs_dt)) #19
@@ -216,8 +216,8 @@ def path_4_plot(res_path, save_plot, plot_type, mtd, obj_func, poly_type=19, pro
                     trend_agree[m] = np.load(res_path + f'{m}\\valid_{obj_func}_patrón.npy').tolist()[vr]['patrón'][obj_func]['weighted_sim']['trend_agreement']
 
                 else:
-                    path = np.load(res_path + f'{m}\\valid_{obj_func}_patrón.npy').tolist()[vr]
-                    prob[m] = path['patrón'][obj_func]
+                    path = np.load(res_path + f'{m}\\nov\\valid_{obj_func}.npy').tolist()[vr]
+                    prob[m] = path['patrón'][obj_func]['likes']
 
                     if proc_sim:
                         prob[m].update({'proc_sim': path['proc_sim']})
@@ -226,8 +226,8 @@ def path_4_plot(res_path, save_plot, plot_type, mtd, obj_func, poly_type=19, pro
                     trend_agree[m] = np.load(res_path + f"{m}\\valid_{obj_func}_multidim.npy").tolist()[vr]['multidim'][obj_func]['weighted_sim']['trend_agreement']
 
                 else:
-                    path = np.load(res_path + f'{m}\\valid_{obj_func}_multidim.npy').tolist()[vr]
-                    prob[m] = path['multidim'][obj_func[:obj_func.index('_')] if '_' in obj_func else obj_func]
+                    path = np.load(res_path + f'{m}\\nov\\valid_{obj_func}.npy').tolist()[vr]
+                    prob[m] = path['multidim'][obj_func]['likes']
 
                     if proc_sim:
                         prob[m].update({'proc_sim': path['proc_sim']})
@@ -633,7 +633,7 @@ def boxplot_like_loc(methods, res_path, save_plot, obj_func, prob_type='top'):
 
     s_cnl_msk = _soil_canal(vpoly)
 
-    sl_cl = {m: [valid_res[m]['top_sim'][:, i] for i, p in enumerate(vpoly)] for m in methods}
+    sl_cl = {m: [valid_res[m]['weighted_res']] for m in methods}
 
     xlim = [0, 18]
     xpos = np.linspace(xlim[0] + 0.5, xlim[1] + 0.5, len(vpoly), endpoint=False)
@@ -648,8 +648,8 @@ def boxplot_like_loc(methods, res_path, save_plot, obj_func, prob_type='top'):
 
     # whiskers = [ ]
     for m in methods:
-        data = sl_cl[m]
-        vsim_data = valid_res[m]['top_sim']
+        data = sl_cl[m][0]
+        vsim_data = valid_res[m]['weighted_res']
 
         fig, ax1 = plt.subplots(figsize=(10, 6))
         fig.canvas.set_window_title(f'{m} Boxplot')
@@ -864,15 +864,15 @@ if os.name == 'posix':
 else:
     # path = r'"C:\\Users\\umroot\\OneDrive - Concordia University - Canada\\gaby\pp2_data\\calib\\"'
     # res_path, save_plot = path + "npy_res\\", path + "plot\\"
-    path = "D:\Gaby\Tinamit\Dt\Calib\\"
+    path = "D:\Gaby\Dt\Calib\\"
     res_path, save_plot = path + "real_run\\", path + "plot\\"
 
 # plot_heatmap_4_methods(mtd, ['mic','aic','rmse', 'nse'])
 
 # trend_agree = { }
-for obj_func in [ 'mic','aic','rmse', 'nse']: #,'rmse', 'nse']: #'mic','aic','rmse', 'nse'
+# for obj_func in [ 'mic','aic','rmse', 'nse']: #,'rmse', 'nse']: #'mic','aic','rmse', 'nse'
     # plot_gof_convergence(obj_func, mtd, res_path, save_plot)
-    boxplot_like_loc(mtd, res_path, save_plot, obj_func)
+    # boxplot_like_loc(mtd, res_path, save_plot, obj_func)
 
     # plot_theil(mtd, res_path, save_plot, obj_func)
 

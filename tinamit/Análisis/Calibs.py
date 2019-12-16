@@ -1,3 +1,4 @@
+import re
 import tempfile
 from warnings import warn as avisar
 
@@ -9,7 +10,7 @@ from scipy.optimize import minimize
 from scipy.stats import gaussian_kde
 
 from tinamit.Análisis.Datos import BDtexto, gen_SuperBD, SuperBD
-from tinamit.Análisis.Sens.behavior import compute_rmse, nse, simple_shape, superposition
+from tinamit.Análisis.Sens.behavior import compute_rmse, nse, superposition, predict
 from tinamit.Análisis.sintaxis import Ecuación
 from tinamit.Calib.ej.obs_patrón import compute_patron
 from tinamit.config import _
@@ -539,7 +540,8 @@ class CalibradorMod(object):
         símismo.mod = mod
 
     def calibrar(símismo, paráms, líms_paráms, bd, método, vars_obs, n_iter, guardar, corresp_vars=None, tipo_proc=None,
-                 mapa_paráms=None, final_líms_paráms=None, guar_sim=False, egr_spotpy=False, warmup_period=None, cls=None, obj_func=None):
+                 mapa_paráms=None, final_líms_paráms=None, guar_sim=False, egr_spotpy=False, warmup_period=None,
+                 cls=None, obj_func=None):
 
         método = método.lower()
         mod = símismo.mod
@@ -574,15 +576,16 @@ class CalibradorMod(object):
                                             t_final=t_final, guar_sim=guar_sim, warmup_period=warmup_period, cls=cls,
                                             obj_func=obj_func, método=método)
 
-                muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv', save_sim=False) #, alt_objfun=None)
+                muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv',
+                                                   save_sim=False)  # , alt_objfun=None)
 
                 # if final_líms_paráms is not None and método in ['dream', 'demcz', 'sceua']:
-                    # if método == 'dream':
-                    #     muestreador.sample(repetitions=n_iter, nChains=len(final_líms_paráms))
-                    # if método == 'sceua':
-                    #     muestreador.sample(n_iter, ngs=len(final_líms_paráms) * 3)
-                    # elif método == 'demcz':
-                    #     muestreador.sample(n_iter, nChains=len(final_líms_paráms))
+                # if método == 'dream':
+                #     muestreador.sample(repetitions=n_iter, nChains=len(final_líms_paráms))
+                # if método == 'sceua':
+                #     muestreador.sample(n_iter, ngs=len(final_líms_paráms) * 3)
+                # elif método == 'demcz':
+                #     muestreador.sample(n_iter, nChains=len(final_líms_paráms))
 
                 if método == 'fscabc':
                     if obj_func == 'aic':
@@ -631,7 +634,7 @@ class CalibradorMod(object):
             par_spotpy = {k: str(i) for i, (k, v) in enumerate(final_líms_paráms.items())}
             res = {'buenas': np.where(buenas)[0], 'prob': probs, 'chains': chains,
                    'sampled_prm': {prm: trzs[f'par{par_spotpy[prm]}'] for prm in par_spotpy}}
-            parameters = { }
+            parameters = {}
             for i in range(len(list(trzs.values())[0])):
                 x = np.asarray([val[i] for val in list(trzs.values())])
                 val_inic = gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms)
@@ -961,7 +964,7 @@ class PatrónProc(object):
                  guar_sim, warmup_period, cls, obj_func, método):
         símismo.paráms = [spotpy.parameter.Uniform(str(list(comp_final_líms).index(p)), low=d[0], high=d[1],
                                                    optguess=(d[0] + d[1]) / 2) for p, d in comp_final_líms.items()]
-        spotpy.parameter.logNormal
+        # spotpy.parameter.logNormal
         símismo.mapa_paráms = mapa_paráms
         símismo.líms_paráms = líms_paráms
         símismo.final_líms_paráms = comp_final_líms
@@ -1010,28 +1013,36 @@ class PatrónProc(object):
         return símismo.eval
 
     def objectivefunction(símismo, simulation, evaluation, params=None):
-        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, cls=símismo.cls, obj_func=símismo.obj_func, método=símismo.método)
+        gof = gen_gof(símismo.tipo_proc, simulation, evaluation, cls=símismo.cls, obj_func=símismo.obj_func,
+                      método=símismo.método)
         return gof
 
 
 def patro_proces(tipo_proc, npoly, norm_obs, valid=False, obj_func='aic'):
     if valid:
-        best_behaviors, linear, all_bbehav_params = compute_patron(npoly, norm_obs, valid=valid, obj_func=obj_func, tipo_proc=tipo_proc)
+        best_behaviors, linear, all_bbehav_params = compute_patron(npoly, norm_obs, valid=valid, obj_func=obj_func,
+                                                                   tipo_proc=tipo_proc)
         return best_behaviors, linear, all_bbehav_params
 
     else:
+        if norm_obs.shape[0] == len(npoly):
+            norm_obs = norm_obs.T
+
         if tipo_proc == 'multidim':  # {var: nparray[61, 38]}
-            return norm_obs.T  # nparray[38, 61]
+            return norm_obs  # nparray[38, 61]
 
         elif tipo_proc == 'patrón':
-            if norm_obs.shape[0] == len(npoly):
-                norm_obs = norm_obs.T
-            best_behaviors = compute_patron(npoly, norm_obs, obj_func=obj_func) #norm_obs: 19*39
+            best_behaviors = compute_patron(npoly, norm_obs, obj_func=obj_func)  # norm_obs: 19*39
             return best_behaviors
 
 
 def aplastar(npoly, dato):
-    mu = np.array([np.nanmean(dato[:, i]) for i, p in enumerate(npoly)])  # 215
+    dato = dato.astype(float)
+
+    if dato.shape[1] != len(npoly):
+        dato = dato.T
+
+    mu = [np.nanmean(dato[:, i]) for i, p in enumerate(npoly)]
     sg = np.array([np.nanstd(dato[:, i]) for i, p in enumerate(npoly)])  # 215
 
     norm = np.array([((dato[:, i] - mu[i]) / sg[i]) for i, p in enumerate(npoly)])  # 38*61
@@ -1064,23 +1075,50 @@ def gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms):
     return vals_inic
 
 
-def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_like=False, método=None):
+def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_like=False, método=None, obs=None):
     if tipo_proc == 'patrón':
         likes = np.zeros([len(eval)])
         poly = list(eval.keys())
-        linear = {}
-        shps = {}
-        for p, best_behav in eval.items():
-            shape = superposition(np.arange(1, sim.shape[0] + 1), sim[:, poly.index(p)], gof_type=[obj_func])[0]
-            # shp = simple_shape(np.arange(1, sim.shape[0] + 1), sim[:, poly.index(p)], best_behav, gof=True, gof_type=[obj_func])
-            likes[poly.index(p)] = shape[best_behav]['gof'][obj_func]
-            if valid:
-                shps[p] = shape[best_behav]
-                linear[p] = shape['linear']
+
+        if len(sim[0, :]) != len(poly):
+            sim = sim.T
+
         if valid:
-            return likes, linear, shps
-        elif valid_like:
+            linear, shps = {}, {}
+
+        for i, (p, best_behav) in enumerate(eval.items()):
+            if best_behav[:3] == 'spp':
+                if 'spp_oscil_aten' in best_behav:
+                    behaviour = best_behav[[x.start() for x in re.finditer("\_", best_behav)][2] + 1:]
+                elif 'spp_oscil' in best_behav:
+                    behaviour = best_behav[[x.start() for x in re.finditer("\_", best_behav)][1] + 1:]
+            else:
+                behaviour = best_behav
+
+            behaviours = [['linear', behaviour] if valid else [behaviour]][0]
+            shape = superposition(np.arange(1, sim.shape[0] + 1), sim[:, poly.index(p)], gof_type=[obj_func],
+                                  behaviours=behaviours)[0]
+
+            if valid:
+                shps[p], linear[p] = shape[best_behav], shape['linear']
+
+            likes[i] = shape[best_behav]['gof'][obj_func]
+
+            import matplotlib.pyplot as plt
+            y = predict(np.arange(1, 42, 1), shape[best_behav]['bp_params'], best_behav)
+            plt.plot(y)
+            plt.plot(obs[:, i])
+            plt.plot(sim[:, i], label='Sim')
+            plt.title(f"AIC={round(likes[i], 3)}")
+            plt.legend()
+            plt.savefig(f"C:\\Users\\umroot\Desktop\map\sim_obs_check\\aV2_{p}")
+            plt.close()
+
+        if valid_like:
             return likes
+        elif valid:
+            return likes, linear, shps
+
         else:
             if método == 'abc' or método == 'sceua' or método == 'fscabc':
                 return _cls_objfc(cls=cls, obj_func=obj_func, min_max='min', likes=likes)
@@ -1089,10 +1127,10 @@ def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_l
 
     elif tipo_proc == 'multidim':
         if eval.shape != sim.shape:  # 39*18
-            eval= eval.T
-
+            eval = eval.T
         poly = eval.shape[1]
         likes = np.zeros(poly)
+
         for i in range(poly):
             if obj_func.lower() == 'nse':
                 likes[i] = nse(eval[:, i], sim[:, i])
@@ -1110,19 +1148,23 @@ def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_l
 
 
 def _cls_objfc(cls, obj_func, min_max, likes):
-    l_max = ['nse', 'mic' ]
-    l_min =  ['rmse', 'aic' ]
+    l_max = ['nse', 'mic']
+    l_min = ['rmse', 'aic']
     if min_max == 'min':
         if cls:
-            return [-_classify(likes) if obj_func in l_max else _classify(likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
+            return [-_classify(likes) if obj_func in l_max else _classify(
+                likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
         else:
-            return [-np.nanmean(likes) if obj_func in l_max else np.nanmean(likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
+            return [-np.nanmean(likes) if obj_func in l_max else np.nanmean(
+                likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
 
     elif min_max == 'max':
         if cls:
-            return [_classify(likes) if obj_func in l_max else -_classify(likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
+            return [_classify(likes) if obj_func in l_max else -_classify(
+                likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
         else:
-            return [np.nanmean(likes) if obj_func in l_max else -np.nanmean(likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
+            return [np.nanmean(likes) if obj_func in l_max else -np.nanmean(
+                likes) if obj_func in l_min else f"{obj_func} is not considered"][0]
 
 
 def _classify(l_likes):

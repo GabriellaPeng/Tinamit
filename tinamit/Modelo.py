@@ -1899,7 +1899,7 @@ class Modelo(object):
                     [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
                          l_vars[0]].values[warmup_period:, j - 1] for j in obs['x0'].values]).T
 
-            matrs_simul = {vr: {'all_res': all_res, 'prob': lg['prob']} for vr in l_vars}
+            matrs_simul = {vr: {'all_res': all_res, 'prob': lg['prob'], 'buenas':lg['buenas']} for vr in l_vars}
 
         if tipo_proc is None:
             resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)
