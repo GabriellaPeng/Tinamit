@@ -1,3 +1,4 @@
+import os
 import re
 import tempfile
 from warnings import warn as avisar
@@ -8,12 +9,14 @@ import spotpy
 import xarray as xr
 from scipy.optimize import minimize
 from scipy.stats import gaussian_kde
+from xarray import Dataset
 
 from tinamit.Análisis.Datos import BDtexto, gen_SuperBD, SuperBD
 from tinamit.Análisis.Sens.behavior import compute_rmse, nse, superposition, predict
 from tinamit.Análisis.sintaxis import Ecuación
 from tinamit.Calib.ej.obs_patrón import compute_patron
 from tinamit.config import _
+from tinamit.cositas import cargar_json
 
 try:
     import pymc3 as pm
@@ -541,7 +544,7 @@ class CalibradorMod(object):
 
     def calibrar(símismo, paráms, líms_paráms, bd, método, vars_obs, n_iter, guardar, corresp_vars=None, tipo_proc=None,
                  mapa_paráms=None, final_líms_paráms=None, guar_sim=False, egr_spotpy=False, warmup_period=None,
-                 cls=None, obj_func=None):
+                 cls=None, obj_func=None, simluation_res=None, ind_simul=None):
 
         método = método.lower()
         mod = símismo.mod
@@ -574,7 +577,7 @@ class CalibradorMod(object):
                     mod_spotpy = PatrónProc(mod=mod, líms_paráms=líms_paráms, obs=obs, tipo_proc=tipo_proc,
                                             mapa_paráms=mapa_paráms, comp_final_líms=final_líms_paráms,
                                             t_final=t_final, guar_sim=guar_sim, warmup_period=warmup_period, cls=cls,
-                                            obj_func=obj_func, método=método)
+                                            obj_func=obj_func, método=método, simluation_res=simluation_res, ind_simul=ind_simul)
 
                 muestreador = _algs_spotpy[método](mod_spotpy, dbname=temp.name, dbformat='csv',
                                                    save_sim=False)  # , alt_objfun=None)
@@ -610,7 +613,6 @@ class CalibradorMod(object):
         trzs = egr_spotpy.obt_datos(cols_prm)
         probs = egr_spotpy.obt_datos('like1')['like1']
         chains = egr_spotpy.obt_datos('chain')['chain']
-
         # if os.path.isfile(temp.name + '.csv'):
         #     os.remove(temp.name + '.csv')
         if obj_func in ['rmse', 'aic']:
@@ -634,6 +636,13 @@ class CalibradorMod(object):
             par_spotpy = {k: str(i) for i, (k, v) in enumerate(final_líms_paráms.items())}
             res = {'buenas': np.where(buenas)[0], 'prob': probs, 'chains': chains,
                    'sampled_prm': {prm: trzs[f'par{par_spotpy[prm]}'] for prm in par_spotpy}}
+            ####
+            print(obj_func)
+            for k in range(5):
+                a = [j[k] for j in [v[-5:] for i, v in res['sampled_prm'].items()]]
+                print('SD:', np.average(a[:3]), 'P:', np.average(a[-10:]))
+            print(res['prob'][-5:])
+            ###
             parameters = {}
             for i in range(len(list(trzs.values())[0])):
                 x = np.asarray([val[i] for val in list(trzs.values())])
@@ -961,7 +970,7 @@ class PatrónProc(object):
     itr = 0
 
     def __init__(símismo, mod, líms_paráms, obs, tipo_proc, mapa_paráms, comp_final_líms, t_final,
-                 guar_sim, warmup_period, cls, obj_func, método):
+                 guar_sim, warmup_period, cls, obj_func, método, simluation_res, ind_simul):
         símismo.paráms = [spotpy.parameter.Uniform(str(list(comp_final_líms).index(p)), low=d[0], high=d[1],
                                                    optguess=(d[0] + d[1]) / 2) for p, d in comp_final_líms.items()]
         # spotpy.parameter.logNormal
@@ -981,16 +990,22 @@ class PatrónProc(object):
         símismo.eval = patro_proces(símismo.tipo_proc, símismo.poly, símismo.obs_norm, obj_func=símismo.obj_func)
         símismo.cls = cls
         símismo.método = método
+        símismo.simul_res = simluation_res
+        símismo.ind_simul = ind_simul
 
     def parameters(símismo):
         return spotpy.parameter.generate(símismo.paráms)
 
     def simulation(símismo, x):
-        vals_inic = {PatrónProc.itr:
-                         gen_val_inic(x, símismo.mapa_paráms, símismo.líms_paráms, símismo.final_líms_paráms)}
+        if símismo.simul_res is None:
+            vals_inic = {PatrónProc.itr:
+                             gen_val_inic(x, símismo.mapa_paráms, símismo.líms_paráms, símismo.final_líms_paráms)}
 
-        res = símismo.mod.simular_grupo(vars_interés=símismo.vars_interés[0], t_final=40,
-                                        vals_inic=vals_inic, guardar=símismo.guar_sim)
+            res = símismo.mod.simular_grupo(vars_interés=símismo.vars_interés[0], t_final=40,
+                                            vals_inic=vals_inic, guardar=símismo.guar_sim)
+        else:
+            ind = np.arange(símismo.ind_simul[0], símismo.ind_simul[1])[PatrónProc.itr]
+            res = {PatrónProc.itr: Dataset.from_dict(cargar_json(os.path.join(símismo.simul_res, f'{ind}')))}
 
         PatrónProc.itr += 1
 
@@ -1000,7 +1015,7 @@ class PatrónProc(object):
         if isinstance(res, dict):
             m_res = np.asarray(
                 [list(res.values())[0][símismo.vars_interés[0]].values[símismo.warmup_period:, i - 1] for i in
-                 símismo.poly])
+                 símismo.poly]) #19*41
 
             return ((m_res.T - símismo.mu_obs) / símismo.sg_obs)
 
@@ -1036,16 +1051,17 @@ def patro_proces(tipo_proc, npoly, norm_obs, valid=False, obj_func='aic'):
             return best_behaviors
 
 
-def aplastar(npoly, dato):
+def aplastar(polys, dato):
     dato = dato.astype(float)
+    len_dato = len(polys)
 
-    if dato.shape[1] != len(npoly):
+    if dato.shape[1] != len_dato:
         dato = dato.T
 
-    mu = [np.nanmean(dato[:, i]) for i, p in enumerate(npoly)]
-    sg = np.array([np.nanstd(dato[:, i]) for i, p in enumerate(npoly)])  # 215
+    mu = [np.nanmean(dato[:, i]) for i in range(len_dato)]
+    sg = np.array([np.nanstd(dato[:, i]) for i in range(len_dato)])  # 215
 
-    norm = np.array([((dato[:, i] - mu[i]) / sg[i]) for i, p in enumerate(npoly)])  # 38*61
+    norm = np.array([((dato[:, i] - mu[i]) / sg[i]) for i in range(len_dato)])  # 38*61
     return mu, sg, norm
 
 
@@ -1075,7 +1091,7 @@ def gen_val_inic(x, mapa_paráms, líms_paráms, final_líms_paráms):
     return vals_inic
 
 
-def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_like=False, método=None, obs=None):
+def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_like=False, método=None):
     if tipo_proc == 'patrón':
         likes = np.zeros([len(eval)])
         poly = list(eval.keys())
@@ -1103,16 +1119,6 @@ def gen_gof(tipo_proc, sim, eval, valid=False, cls=False, obj_func=None, valid_l
                 shps[p], linear[p] = shape[best_behav], shape['linear']
 
             likes[i] = shape[best_behav]['gof'][obj_func]
-
-            import matplotlib.pyplot as plt
-            y = predict(np.arange(1, 42, 1), shape[best_behav]['bp_params'], best_behav)
-            plt.plot(y)
-            plt.plot(obs[:, i])
-            plt.plot(sim[:, i], label='Sim')
-            plt.title(f"AIC={round(likes[i], 3)}")
-            plt.legend()
-            plt.savefig(f"C:\\Users\\umroot\Desktop\map\sim_obs_check\\aV2_{p}")
-            plt.close()
 
         if valid_like:
             return likes

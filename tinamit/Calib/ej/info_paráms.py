@@ -58,6 +58,14 @@ calib_líms_paráms = {'Kaq': [(26, 103), (26, 120), (26, 158), (26, 52)],
                      'Capacity per tubewell': (100.8, 201.6),
                      }
 
+calib_líms_paráms_reduce_sd = {'Kaq': [(26, 103), (26, 120), (26, 158), (26, 52)],
+                     'Peq - Aquifer effective porosity': [(0.1, 0.33)] * 4,
+                     'Pex - Transition zone effective porosity': [(0.01, 0.33)] * 4,
+                     'POH Kharif Tinamit': (355, 438),
+                     'POH rabi Tinamit': (235, 282),
+                     'Capacity per tubewell': (100.8, 180),
+                     }
+
 def _soil_canal(all_poly_dt):
     cls = ['Buchanan, Head', 'Buchanan, Middle', 'Buchanan, Tail', 'Farida, Head', 'Farida, Middle', 'Farida, Tail',
            'Jhang, Middle', 'Jhang, Tail', 'Chuharkana, Tail']

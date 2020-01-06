@@ -11,7 +11,7 @@ from tinamit.Análisis.Sens.behavior import predict, theil_inequal, compute_rmse
 from tinamit.Calib.ej.ej_calib.calib_análisis import plot_save
 
 
-def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, normalize=False):
+def validar_resultados(obs, npoly, matrs_simul, tipo_proc=None, obj_func=None, normalize=False):
     """
 
     patt_vec['bp_params']
@@ -23,7 +23,7 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, normaliz
     -------
 
     """
-    l_vars = list(obs.data_vars)
+    l_vars = list(matrs_simul)
     egr = {vr: {} for vr in l_vars}
 
     if tipo_proc is None:
@@ -54,69 +54,82 @@ def validar_resultados(obs, matrs_simul, tipo_proc=None, obj_func=None, normaliz
             return egr
 
     else:
-        npoly = obs['x0'].values
         if normalize:
-            mu_obs_matr, sg_obs_matr, obs_data = aplastar(npoly, obs[l_vars[0]].values) # obs_norm: dict {'y': 6*21}
-            obs_data = {va: obs_data.T for va in l_vars}  # [nparray[39*18]]
+            mu_obs_matr, sg_obs_matr, obs_data = aplastar(npoly, obs) # obs_norm: dict {'y': 6*21}
+            obs_data = {vr: obs_data.T for vr in l_vars}  # [nparray[39*18]]
             for vr in l_vars:
-                matrs_simul[vr].update({'all_sim': (res - mu_obs_matr) / sg_obs_matr for type, res in matrs_simul[vr].items() if type == 'all_res'})
+                matrs_simul[vr].update({'all_res': (res - mu_obs_matr) / sg_obs_matr for type, res in matrs_simul[vr].items() if type == 'all_res'})
         else:
-            obs_data = {vr: obs[vr].values for vr in l_vars}
-            for vr in l_vars:
-                matrs_simul[vr].update({'all_sim': res for type, res in matrs_simul[vr].items() if type == 'all_res'})
+            obs_data = {vr: obs for vr in l_vars}
 
         for vr in l_vars:
             matrs_simul = matrs_simul[vr]
-            matrs_simul = generate_weighted_simulations(matrs_simul["all_sim"], matrs_simul["prob"], matrs_simul['buenas'], obj_func)
+            matrs_simul = generate_weighted_simulations(matrs_simul["all_res"], matrs_simul["prob"], matrs_simul['buenas'])
 
             egr[vr] = {tipo_proc: {obj_func: { }}}
             egr[vr][tipo_proc][obj_func].update(matrs_simul)
 
-            type_sim = 'top_weighted_sim'
-            sim_val = matrs_simul[type_sim]
+            top_wt_res = matrs_simul['top_res']
 
-            if tipo_proc == 'multidim':
-                likes = gen_gof('multidim', sim=sim_val, eval=obs_data[vr], valid=True, obj_func=obj_func)
-                egr[vr][tipo_proc][obj_func].update({'likes': {type_sim: likes}})
-
-                top_likes = np.zeros([len(matrs_simul['weighted_res']), len(npoly)])
-                for i, sim_v in enumerate(matrs_simul['weighted_res']):
-                    top_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_data[vr], valid=True, obj_func=obj_func)
-
-                egr[vr][tipo_proc][obj_func]['likes'].update({'weighted_res': top_likes})
-
-                obs_linear = patro_proces(tipo_proc, npoly, obs_data[vr], valid=True)[1]
-                sim_linear = patro_proces(tipo_proc, npoly, sim_val, valid=True)[1]
-                egr[vr][tipo_proc][obj_func].update({'trend_agreement': coeff_agreement(obs_linear, sim_linear, None, None, npoly,
-                                                          sim_val, obs_data[vr])})
-
-            elif tipo_proc == 'patrón':
+            if tipo_proc == 'patrón':
                 best_behaviors, obs_linear, obs_shps = patro_proces('patrón', npoly, obs_data[vr], valid=True,
-                                                                    obj_func=obj_func) #obs_data = 41*18
+                                                                    obj_func=obj_func)
+            for wt_sim in ['weighted_sim', 'top_weighted_sim']:
+                weighted_sim = matrs_simul[wt_sim]
 
-                likes, sim_linear, sim_shps = gen_gof('patrón', sim=sim_val, eval=best_behaviors, valid=True,
-                                                      obj_func=obj_func)  # 19*41
-                top_wt_res = matrs_simul['weighted_res']
-                top_likes = np.zeros([len(top_wt_res), len(npoly)])
+                ideal_shape = (matrs_simul['all_res'].shape[1], len(npoly))
+                weighted_sim = shape_consist_check(ideal_shape, weighted_sim)
+                obs_data[vr] = shape_consist_check(ideal_shape, obs_data[vr])
 
-                for i, sim_v in enumerate(top_wt_res):
-                    print(f"Calculating GOF for the {i} run")
-                    top_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False, obj_func=obj_func,
-                                              valid_like=True)
+                if tipo_proc == 'multidim':
+                    likes = gen_gof('multidim', sim=weighted_sim, eval=obs_data[vr], valid=True, obj_func=obj_func)
+                    top_likes = np.zeros([len(top_wt_res), len(npoly)])
 
-                egr[vr][tipo_proc][obj_func].update({'likes': {'weighted_res': top_likes}})
-                egr[vr][tipo_proc][obj_func]['likes'].update({type_sim: likes})
+                    obs_linear = patro_proces(tipo_proc, npoly, obs_data[vr], valid=True)[1]
+                    sim_linear = patro_proces(tipo_proc, npoly, weighted_sim, valid=True)[1]
 
-                egr[vr][tipo_proc][obj_func].update({'trend_agreement': coeff_agreement(
-                obs_linear, sim_linear, obs_shps, sim_shps, npoly, sim_val, obs_data[vr], best_behaviors)})
+                    if not ('likes' in egr[vr][tipo_proc][obj_func]):
+                        egr[vr][tipo_proc][obj_func].update({'likes': {}, 'trend_agreement': {}})
 
-                egr[vr][tipo_proc][obj_func].update({'Theil':{type_sim: {i: np.zeros([len(npoly)]) for i in ['Um','Us','Uc','mse']}}})
-                for p in range(len(npoly)):
-                    mse, um, us, uc = theil_inequal(sim_val[:, p], obs_data[vr][:, p])
-                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['mse'][p] = mse
-                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['Um'][p] = um
-                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['Us'][p] = us
-                    egr[vr][tipo_proc][obj_func]['Theil'][type_sim]['Uc'][p] = uc
+                        for i, sim_v in enumerate(top_wt_res):
+                            top_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_data[vr], valid=True,
+                                                      obj_func=obj_func)
+                        egr[vr][tipo_proc][obj_func]['likes'].update({'top_res': top_likes})
+
+
+                    egr[vr][tipo_proc][obj_func]['likes'].update({wt_sim: likes})
+                    egr[vr][tipo_proc][obj_func]['trend_agreement'].update({wt_sim: coeff_agreement(obs_linear,
+                                                    sim_linear, None, None, npoly, weighted_sim, obs_data[vr])})
+
+                elif tipo_proc == 'patrón':
+                    if not ('Theil' in egr[vr][tipo_proc][obj_func]):
+                        egr[vr][tipo_proc][obj_func].update({'Theil': { }, 'likes': { }, 'trend_agreement': {}})
+
+                        top_likes = np.zeros([len(top_wt_res), len(npoly)])
+                        for i, sim_v in enumerate(top_wt_res):
+                            print(f"Calculating GOF for the {i} run")
+                            top_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False,
+                                                      obj_func=obj_func, valid_like=True)
+                        egr[vr][tipo_proc][obj_func]['likes'].update({'top_res': top_likes})
+
+                    egr[vr][tipo_proc][obj_func]['Theil'].update({wt_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc', 'mse']}})
+
+                    for i, p in enumerate(npoly):
+                        mse, Um, Us, Uc = theil_inequal(weighted_sim[:, i], obs_data[vr][:, i])
+                        egr[vr][tipo_proc][obj_func]['Theil'][wt_sim]['mse'][i] = mse
+                        egr[vr][tipo_proc][obj_func]['Theil'][wt_sim]['Um'][i] = Um
+                        egr[vr][tipo_proc][obj_func]['Theil'][wt_sim]['Us'][i] = Us
+                        egr[vr][tipo_proc][obj_func]['Theil'][wt_sim]['Uc'][i] = Uc
+
+                     #obs_data = 41*18
+
+                    likes, sim_linear, sim_shps = gen_gof('patrón', sim=weighted_sim, eval=best_behaviors, valid=True,
+                                                          obj_func=obj_func)  # 19*41
+
+                    egr[vr][tipo_proc][obj_func]['likes'].update({wt_sim: likes})
+
+                    egr[vr][tipo_proc][obj_func]['trend_agreement'].update({wt_sim: coeff_agreement(
+                    obs_linear, sim_linear, obs_shps, sim_shps, npoly, weighted_sim, obs_data[vr], best_behaviors)})
 
             return egr
 
@@ -332,7 +345,7 @@ def _ci(data, obs_data, confidence=0.95, probs=None, counts=None):
         return intervals
 
 
-def generate_weighted_simulations(all_simulations, likes, mask, objective_function, top_percentage=0.2):
+def generate_weighted_simulations(all_simulations, likes, mask):
     len_time =  all_simulations.shape[1]
     no_polys = all_simulations.shape[2]
 
@@ -340,7 +353,7 @@ def generate_weighted_simulations(all_simulations, likes, mask, objective_functi
     processed_simulations = {'weighted_sim': np.zeros([len_time, no_polys]),
                              'top_weighted_sim': np.zeros([len_time, no_polys]),
                              'all_res': all_simulations,
-                             'weighted_res': np.zeros([len(mask), len_time, no_polys])
+                             'top_res': np.zeros([len(mask), len_time, no_polys])
                             }
 
     all_weights = np.asarray([(p - np.min(likes)) / np.ptp(likes) for p in likes])
@@ -351,11 +364,17 @@ def generate_weighted_simulations(all_simulations, likes, mask, objective_functi
             a = all_simulations[:, t, p]
             processed_simulations['weighted_sim'][t, p] = np.average(a, weights=all_weights)
 
-            weighted_res = np.take(a, mask)
-            processed_simulations['top_weighted_sim'][t, p] =  np.average(weighted_res, weights=top_weights) #np.average(a[mask], weights=top_weights)
-            processed_simulations['weighted_res'][:, t, p] = weighted_res
+            top_res = np.take(a, mask)
+            processed_simulations['top_weighted_sim'][t, p] =  np.average(top_res, weights=top_weights) #np.average(a[mask], weights=top_weights)
+            processed_simulations['top_res'][:, t, p] = top_res
 
     return processed_simulations
+
+
+def shape_consist_check(ideal_shape, input_shape):
+    if not (ideal_shape == input_shape.shape):
+        input_shape = input_shape.T
+    return input_shape
 
 
 class PatrónValidTest(object):

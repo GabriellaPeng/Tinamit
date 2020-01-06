@@ -1,18 +1,23 @@
 import os
+import re
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
-import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import seaborn as sns
 
 from matplotlib.patches import Polygon
-from tinamit.Calib.ej.cor_patrón import ori_calib, ori_valid
 from tinamit.Calib.ej.info_paráms import _soil_canal
 
+from xarray import Dataset
+
+from tinamit.Análisis.Sens.behavior import superposition, simple_shape
+from tinamit.Calib.ej.cor_patrón import ori_valid, ori_calib
+
+from tinamit.cositas import cargar_json
 
 def plot_save(p, name, save_plot):
     handles, labels = plt.gca().get_legend_handles_labels()
@@ -853,9 +858,94 @@ def plot_gof_convergence(gof, methods, res_path, save_plot):
 
     # ax.legend(lines, [m.upper() for m in methods], ncol=4, loc='upper left', frameon=False)
 
+def input_data(obj_func, algorithm):
+    tipo_proc = ['patrón' if obj_func in ['aic', 'mic'] else 'multidim' if obj_func in ['nse', 'rmse'] else ''][0]
+
+    d_val =  {'dream': {'aic': (0, 10) , 'mic': (10, 20)},
+                 'mle': {'aic': (40, 50), 'mic': (50, 60)},
+                 'fscabc': {'aic': (20, 30), 'mic': (30, 40)},
+                 'demcz': {'aic': (0, 10), 'mic': (0, 10)}}
+
+    n_sim = d_val[algorithm][obj_func]
+
+    sim_path = f"D:\Gaby\Dt\Calib\simular\dec\\{algorithm}\\{obj_func}\\"
+
+    return tipo_proc, n_sim, sim_path
 
 
-mtd = ['fscabc', 'dream', 'demcz', 'mle'] #'fscabc', 'dream', 'demcz', 'mle'
+def cal_gof(tipo_proc, sim, eval, obs=None, name=None, show_gof=True, algrithm=None, plot=False, stat=None):
+    if tipo_proc == 'patrón':
+        likes = np.zeros([len(eval)])
+        poly = list(eval.keys())
+
+        if sim.shape[1] != len(poly):
+            sim = sim.T
+
+        for i, (p, best_behav) in enumerate(eval.items()):
+            if show_gof:
+                if best_behav[:3] == 'spp':
+                    if 'spp_oscil_aten' in best_behav:
+                        behaviour = best_behav[[x.start() for x in re.finditer("\_", best_behav)][2] + 1:]
+                    elif 'spp_oscil' in best_behav:
+                        behaviour = best_behav[[x.start() for x in re.finditer("\_", best_behav)][1] + 1:]
+                else:
+                    behaviour = best_behav
+
+                behaviours = [['linear', behaviour] if stat is not None else [behaviour]][0]
+                shape = superposition(np.arange(1, sim.shape[0] + 1), sim[:, poly.index(p)], gof_type=[obj_func],
+                                      behaviours=behaviours)[0]
+                likes[i] = shape[best_behav]['gof'][obj_func]
+
+                if stat:
+                    j = stat['run']
+                    data =  stat['data']
+                    data['sim_slope'][j, i] = shape['linear']['bp_params']['slope']
+                    data['sim_mu'][j, i] = np.average(sim[:, i])
+
+            if plot:
+                import matplotlib.pyplot as plt
+                # y = predict(np.arange(1, 42, 1), shape[best_behav]['bp_params'], best_behav)
+                # plt.plot(y)
+                plt.plot(obs[:, i])
+                plt.plot(sim[:, i], label='Sim')
+                plt.ylim(0, 7)
+                plt.title(f"AIC={round(likes[i], 3)}\nobs_beh={best_behav}")
+                plt.legend()
+                plt.savefig(f"C:\\Users\\umroot\Desktop\map\sim_obs_check\\plots\\{algrithm}\\{name}_{p}")
+                plt.close()
+
+def plotss(polys, run, sim_path):
+    # sc = _soil_canal(calib_poly)
+    # d_c = {c: [] for c in ['H', 'M', 'T']}
+    # for n, l_p in sc.items():
+    #     d_c[n[n.find(',') + 2]].extend(l_p)
+
+    sim = np.asarray([Dataset.from_dict(cargar_json(os.path.join(sim_path, f'{run}')))[vr].values[:, j - 1] for j in list(polys)]) #19*41
+    # mu_obs, sg_obs, norm_obs = aplastar(calib_poly, obs.T)
+
+    eval = np.load(path+'calib_eval.npy').tolist()
+    # normeval =np.load(path+'norm_calib_eval.npy').tolist()
+
+    # eval = patro_proces('patrón', valid_poly, obs, obj_func='aic')
+    # normeval = patro_proces('patrón', valid_poly, norm_obs, obj_func='aic')
+
+    # normsim = ((sim.T - mu_obs) / sg_obs)
+
+    return sim, eval
+
+def linear_slope(polys, data): #41*19
+    len_p = len(polys)
+    if data.shape[1] != len_p:
+        data = data.T
+
+    d_sign = np.zeros(len_p)
+    for p in range(len_p):
+        d_sign[p] = simple_shape(np.arange(1, len(data)+1), data[:, p], tipo_egr='linear')['bp_params']['slope']
+
+    return d_sign
+
+
+algorithms = [ 'demcz', 'dream', 'fscabc', 'mle']
 
 if os.name == 'posix':
     res_path, save_plot = '/Users/gabriellapeng/Downloads/', '/Users/gabriellapeng/Downloads/'
@@ -864,8 +954,10 @@ if os.name == 'posix':
 else:
     # path = r'"C:\\Users\\umroot\\OneDrive - Concordia University - Canada\\gaby\pp2_data\\calib\\"'
     # res_path, save_plot = path + "npy_res\\", path + "plot\\"
-    path = "D:\Gaby\Dt\Calib\\"
-    res_path, save_plot = path + "real_run\\", path + "plot\\"
+    # path = "D:\Gaby\Dt\Calib\\"
+    # res_path, save_plot = path + "real_run\\", path + "plot\\"
+    path = "C:\\Users\\umroot\\Desktop\map\sim_obs_check\\"
+    vr = 'mds_Watertable depth Tinamit'
 
 # plot_heatmap_4_methods(mtd, ['mic','aic','rmse', 'nse'])
 
@@ -887,5 +979,52 @@ else:
     # trend_agre = path_4_plot(res_path, save_plot, 'valid', mtd, obj_func, poly_type=19, trd_agree=True)
     # trend_agree.update({obj_func: trend_agre})
 
-# print()
-#TODO: wirte 15prms * 500 aic
+plot=False
+stat=True
+load_data = True
+
+valid_calib = 'calib'
+
+
+obj_func = ['mic', 'aic']
+
+if valid_calib == 'calib':
+    polys = ori_valid[1]
+else:
+    polys = ori_calib[1]
+
+
+if not load_data:
+    obs = np.asarray([v for i, v in polys.items()]).astype(float) #19*41
+    obs_slope = linear_slope(polys, obs)
+    obs_mu =np.asarray([np.nanmean(v) for i, v in enumerate(obs)])
+
+else:
+    dict_stat = {m:{oj: { } for oj in obj_func}for m in algorithms}
+
+for m in algorithms:
+    for gof in obj_func:
+        if load_data:
+            dict_stat[m][gof] = np.load(path+f'\\data_analysis\\{m[:2]}_{gof}.npy').tolist()
+
+        else:
+            tipo_proc, n_sim, sim_path = input_data(gof, m)
+
+            if stat:
+                d_stat = {j: np.zeros([n_sim[1]-n_sim[0], len(polys)]) for j in ['sim_mu', 'sim_slope']}
+                stat = {'run': i, 'data': d_stat}
+
+            for i, v in enumerate(np.arange(n_sim[0], n_sim[1])):
+                print(f'process {i}-th run')
+                sim, eval = plotss(polys, v, sim_path)
+                cal_gof(tipo_proc, sim, eval,obs = obs.T, name=f'{gof}_{i}', algrithm=m, plot=plot, stat=stat)
+
+            if stat:
+                sim_slope = d_stat['sim_slope']
+                sim_mu = d_stat['sim_mu']
+
+                d_stat = {'mu(S-O)': np.average(np.asarray([v-obs_mu for i, v in enumerate(sim_mu)]), axis=0)}
+                d_stat.update({'Slope(S&O)':np.asarray([len(np.where(np.sign(sim_slope[:, i2])==np.sign(v2))[0])/sim_slope.shape[0] for i2, v2 in enumerate(obs_slope)])})
+                np.save(path + f'{m[:2]}_{gof}', d_stat)
+
+print()

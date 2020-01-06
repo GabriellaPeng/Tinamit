@@ -1776,7 +1776,7 @@ class Modelo(object):
         símismo.calibs.update(dic)
 
     def calibrar(símismo, paráms, bd, líms_paráms=None, vars_obs=None, n_iter=500, método='mle', tipo_proc=None,
-                 mapa_paráms=None, final_líms_paráms=None, guardar=False, guar_sim=None, egr_spotpy=None, warmup_period=None, cls=None, obj_func=None):
+                 mapa_paráms=None, final_líms_paráms=None, guardar=False, guar_sim=None, egr_spotpy=None, warmup_period=None, cls=None, obj_func=None, simluation_res=None, ind_simul=None):
 
         if vars_obs is None:
             l_vars = None
@@ -1808,11 +1808,11 @@ class Modelo(object):
             d_calibs = calibrador.calibrar(
                 paráms=paráms, bd=bd, líms_paráms=líms_paráms, método=método, n_iter=n_iter, vars_obs=l_vars,
                 tipo_proc=tipo_proc, mapa_paráms=mapa_paráms, final_líms_paráms=final_líms_paráms,
-                guardar=guardar, guar_sim=guar_sim, egr_spotpy=egr_spotpy, warmup_period=warmup_period, cls=cls, obj_func=obj_func)
+                guardar=guardar, guar_sim=guar_sim, egr_spotpy=egr_spotpy, warmup_period=warmup_period, cls=cls, obj_func=obj_func, simluation_res=simluation_res, ind_simul=ind_simul)
             símismo.calibs.update(d_calibs)
 
     def validar(símismo, bd, var=None, corresp_vars=None, tipo_proc=None, guardar=False,
-                lg=None, paralelo=False, valid_sim=False, n_sim=None, warmup_period=None, obj_func=None):
+                lg=None, paralelo=False, valid_sim=False, n_sim=None, warmup_period=None, obj_func=None, calib_res=None):
         if var is None:
             var = None
         elif isinstance(var, str):
@@ -1825,7 +1825,7 @@ class Modelo(object):
                 vld = símismo._validar(bd=bd_lg, var=var, corresp_vars=corresp_vars, lg=lg,
                                        tipo_proc=None, guardar=guardar,
                                        paralelo=paralelo, valid_sim=valid_sim, n_sim=n_sim,
-                                       warmup_period=warmup_period, obj_func=obj_func)
+                                       warmup_period=warmup_period, obj_func=obj_func, calib_res=calib_res)
                 res[lg] = vld
             res['éxito'] = all(d['éxito'] for d in res.values())
             return res
@@ -1837,10 +1837,10 @@ class Modelo(object):
 
         return símismo._validar(bd=bd, var=var,corresp_vars=corresp_vars, tipo_proc=tipo_proc,
                                 guardar=guardar, lg=lg, paralelo=paralelo, obj_func=obj_func,
-                                valid_sim=valid_sim, n_sim=n_sim, warmup_period=warmup_period)
+                                valid_sim=valid_sim, n_sim=n_sim, warmup_period=warmup_period, calib_res=calib_res)
 
     def _validar(símismo, bd, var, corresp_vars, tipo_proc, guardar, lg, paralelo,
-                 valid_sim, n_sim, warmup_period, obj_func):
+                 valid_sim, n_sim, warmup_period, obj_func, calib_res):
         if corresp_vars is None:
             corresp_vars = {}
 
@@ -1892,19 +1892,38 @@ class Modelo(object):
         else:
             all_res = np.empty([n_sim[1] - n_sim[0], *obs[l_vars[0]].values.shape])  # 500*39*19
 
+            if calib_res is not None:
+                calib_poly = np.asarray(list(calib_res[1]))
+                calib_obs = np.asarray([calib_res[1][i] for i in calib_poly]).astype(float).T
+                calib_res = np.empty([n_sim[1] - n_sim[0], *calib_obs.shape])
+
             for i in range(n_sim[1] - n_sim[0]):
                 if warmup_period is None:
                     warmup_period = 0
+
                 all_res[i, :] = np.asarray(
                     [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
                          l_vars[0]].values[warmup_period:, j - 1] for j in obs['x0'].values]).T
 
+                if calib_res is not None:
+                    calib_res[i, :] = np.asarray(
+                        [Dataset.from_dict(cargar_json(os.path.join(valid_sim, f'{i + n_sim[0]}')))[
+                             l_vars[0]].values[warmup_period:, j - 1] for j in calib_poly]).T
+
             matrs_simul = {vr: {'all_res': all_res, 'prob': lg['prob'], 'buenas':lg['buenas']} for vr in l_vars}
 
         if tipo_proc is None:
-            resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc)
+            resultados = validar_resultados(obs=obs, npoly=None, matrs_simul=matrs_simul, tipo_proc=tipo_proc)
         else:
-            resultados = validar_resultados(obs=obs, matrs_simul=matrs_simul, tipo_proc=tipo_proc, obj_func=obj_func)
+            resultados = validar_resultados(obs=obs[l_vars[0]].values, npoly=obs['x0'].values, matrs_simul=matrs_simul,
+                                            tipo_proc=tipo_proc, obj_func=obj_func)
+
+            if calib_res is not None:
+                print("\n\nProcessing Calibration Results")
+                matrs_simul = {vr: {'all_res': calib_res, 'prob': lg['prob'], 'buenas': lg['buenas']} for vr in l_vars}
+                calib_resultados = validar_resultados(obs=calib_obs, npoly=calib_poly, matrs_simul=matrs_simul,
+                                                      tipo_proc=tipo_proc, obj_func=obj_func)
+                resultados[l_vars[0]][tipo_proc][obj_func].update({'calib_res': calib_resultados[l_vars[0]][tipo_proc][obj_func]})
 
         if guardar and tipo_proc is not None:
             np.save(guardar, resultados)
