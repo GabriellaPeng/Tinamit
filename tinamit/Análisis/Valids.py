@@ -69,33 +69,34 @@ def validar_resultados(obs, npoly, matrs_simul, tipo_proc=None, obj_func=None, n
             egr[vr] = {tipo_proc: {obj_func: { }}}
             egr[vr][tipo_proc][obj_func].update(matrs_simul)
 
-            top_wt_res = matrs_simul['top_res']
+            all_wt_res =matrs_simul['all_res']
+            all_likes = np.zeros([len(all_wt_res), len(npoly)])
 
             if tipo_proc == 'patrón':
                 best_behaviors, obs_linear, obs_shps = patro_proces('patrón', npoly, obs_data[vr], valid=True,
                                                                     obj_func=obj_func)
             for wt_sim in ['weighted_sim', 'top_weighted_sim']:
                 weighted_sim = matrs_simul[wt_sim]
+                wt_res = [all_wt_res if 'top' not in wt_sim else None][0]
 
-                ideal_shape = (matrs_simul['all_res'].shape[1], len(npoly))
+                ideal_shape = (all_wt_res.shape[1], len(npoly))
                 weighted_sim = shape_consist_check(ideal_shape, weighted_sim)
                 obs_data[vr] = shape_consist_check(ideal_shape, obs_data[vr])
 
                 if tipo_proc == 'multidim':
                     likes = gen_gof('multidim', sim=weighted_sim, eval=obs_data[vr], valid=True, obj_func=obj_func)
-                    top_likes = np.zeros([len(top_wt_res), len(npoly)])
 
                     obs_linear = patro_proces(tipo_proc, npoly, obs_data[vr], valid=True)[1]
                     sim_linear = patro_proces(tipo_proc, npoly, weighted_sim, valid=True)[1]
 
-                    if not ('likes' in egr[vr][tipo_proc][obj_func]):
-                        egr[vr][tipo_proc][obj_func].update({'likes': {}, 'trend_agreement': {}})
+                    if wt_res is not None:
+                        if not ('likes' in egr[vr][tipo_proc][obj_func]):
+                            egr[vr][tipo_proc][obj_func].update({'likes': {}, 'trend_agreement': {}})
 
-                        for i, sim_v in enumerate(top_wt_res):
-                            top_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_data[vr], valid=True,
-                                                      obj_func=obj_func)
-                        egr[vr][tipo_proc][obj_func]['likes'].update({'top_res': top_likes})
-
+                            for i, sim_v in enumerate(wt_res):
+                                all_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_data[vr], valid=True,
+                                                          obj_func=obj_func)
+                            egr[vr][tipo_proc][obj_func]['likes'].update({'all_res': all_likes})
 
                     egr[vr][tipo_proc][obj_func]['likes'].update({wt_sim: likes})
                     egr[vr][tipo_proc][obj_func]['trend_agreement'].update({wt_sim: coeff_agreement(obs_linear,
@@ -105,12 +106,12 @@ def validar_resultados(obs, npoly, matrs_simul, tipo_proc=None, obj_func=None, n
                     if not ('Theil' in egr[vr][tipo_proc][obj_func]):
                         egr[vr][tipo_proc][obj_func].update({'Theil': { }, 'likes': { }, 'trend_agreement': {}})
 
-                        top_likes = np.zeros([len(top_wt_res), len(npoly)])
-                        for i, sim_v in enumerate(top_wt_res):
-                            print(f"Calculating GOF for the {i} run")
-                            top_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False,
-                                                      obj_func=obj_func, valid_like=True)
-                        egr[vr][tipo_proc][obj_func]['likes'].update({'top_res': top_likes})
+                        if wt_res is not None:
+                            for i, sim_v in enumerate(wt_res):
+                                print(f"Calculating GOF for the {i} run")
+                                all_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False,
+                                                          obj_func=obj_func, valid_like=True)
+                            egr[vr][tipo_proc][obj_func]['likes'].update({'all_res': all_likes})
 
                     egr[vr][tipo_proc][obj_func]['Theil'].update({wt_sim: {i: np.zeros([len(npoly)]) for i in ['Um', 'Us', 'Uc', 'mse']}})
 
@@ -121,13 +122,10 @@ def validar_resultados(obs, npoly, matrs_simul, tipo_proc=None, obj_func=None, n
                         egr[vr][tipo_proc][obj_func]['Theil'][wt_sim]['Us'][i] = Us
                         egr[vr][tipo_proc][obj_func]['Theil'][wt_sim]['Uc'][i] = Uc
 
-                     #obs_data = 41*18
-
                     likes, sim_linear, sim_shps = gen_gof('patrón', sim=weighted_sim, eval=best_behaviors, valid=True,
                                                           obj_func=obj_func)  # 19*41
 
                     egr[vr][tipo_proc][obj_func]['likes'].update({wt_sim: likes})
-
                     egr[vr][tipo_proc][obj_func]['trend_agreement'].update({wt_sim: coeff_agreement(
                     obs_linear, sim_linear, obs_shps, sim_shps, npoly, weighted_sim, obs_data[vr], best_behaviors)})
 
