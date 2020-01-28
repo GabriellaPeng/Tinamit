@@ -93,6 +93,7 @@ def validar_resultados(obs, npoly, matrs_simul, tipo_proc=None, obj_func=None, n
                         if not ('likes' in egr[vr][tipo_proc][obj_func]):
                             egr[vr][tipo_proc][obj_func].update({'likes': {}, 'trend_agreement': {}})
 
+                            print(f"\nStarting to calculate {obj_func.upper()} for {len(all_likes)}times\n")
                             for i, sim_v in enumerate(wt_res):
                                 all_likes[i, :] = gen_gof('multidim', sim=sim_v, eval=obs_data[vr], valid=True,
                                                           obj_func=obj_func)
@@ -107,8 +108,9 @@ def validar_resultados(obs, npoly, matrs_simul, tipo_proc=None, obj_func=None, n
                         egr[vr][tipo_proc][obj_func].update({'Theil': { }, 'likes': { }, 'trend_agreement': {}})
 
                         if wt_res is not None:
+                            print(f"Calculating {obj_func}")
                             for i, sim_v in enumerate(wt_res):
-                                print(f"Calculating GOF for the {i} run")
+                                print(f"For the {i} run")
                                 all_likes[i, :] = gen_gof('patrón', sim=sim_v, eval=best_behaviors, valid=False,
                                                           obj_func=obj_func, valid_like=True)
                             egr[vr][tipo_proc][obj_func]['likes'].update({'all_res': all_likes})
@@ -228,7 +230,7 @@ def _anlz_tendencia(obs, sim):
 
 def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, obs_dt, best_behaviors=None):
     # kp<0, the agreement is worsen than random, kp=1 perfect agreement. ICC=1 perfect!
-    mine = minepy.MINE()
+    # mine = minepy.MINE()
     def _kp(sim, obs):
         bp_s = []
         bp_o = []
@@ -245,8 +247,8 @@ def coeff_agreement(obs_linear, sim_linear, obs_shps, sim_shps, poly, sim_val, o
         (1, 1) if all(round(v, 2) > 0 for v in t_v) else (0, 0) if all(round(v, 2) <= 0 for v in t_v) else (
             0, 1) if (round(t_v[0], 2) <= 0) & (round(t_v[1], 2) > 0) else (1, 0) for t_v in
         [(obs_linear[p]['bp_params']['slope'], sim_linear[p]['bp_params']['slope']) for p in poly]]
-    no_true_sign = sum([(i[0] == i[1]) for i in l_sign])
-    trend_agreement = {'slope': {'data': l_sign, 'no_same_signs': np.round(no_true_sign/len(l_sign), 2)}, 'points_diff': {}}
+    num_true_sign = sum([(i[0] == i[1]) for i in l_sign])
+    trend_agreement = {'slope': {'data': l_sign, 'num_true_sign': np.round(num_true_sign/len(l_sign), 2)}, 'points_diff': {}}
      #'slp_kp': cohen_kappa_score([i[0] for i in l_sign], [i[1] for i in l_sign]), 'slp_sign': l_sign}
 
     # trend_agreement['slope'].update({'sign_kendal': estad.kendalltau([i[0] for i in l_sign], [i[1] for i in l_sign])[0]})

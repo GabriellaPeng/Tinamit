@@ -99,12 +99,12 @@ def _input_dt(method, obj_func, c_v, month, egr_spotpy=None, simluation_res=None
 if __name__ == "__main__":
     egr_spotpy = None
     warmup_period = None # 2
-    simluation_ress = True
-    calib_valid = 'calib'
+    simluation_ress = None
+    calib_valid = 'valid'
     month='dec'
 
-    for m in ['demcz']: #'demcz', 'dream', 'fscabc','mle']: #
-        for obj_func in ['nse']: #, 'nse', 'rmse', 'aic',  'mic'
+    for m in ['demcz', 'dream', 'fscabc','mle']: #'demcz', 'dream', 'fscabc','mle']: #
+        for obj_func in ['nse','rmse', 'aic',  'mic']: #, 'nse', 'rmse', 'aic',  'mic'
             if calib_valid == 'calib':
                 tipo_proc, guardar, guar_sim, egr_spotpy, simluation_res, ind_simul = _input_dt(method=m, obj_func=obj_func, c_v=calib_valid, egr_spotpy=egr_spotpy, month=month, simluation_res=simluation_ress)
                 _calib(tipo_proc=tipo_proc, guardar=guardar, método=m, obj_func=obj_func,
